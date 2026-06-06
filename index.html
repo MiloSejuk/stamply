@@ -1,0 +1,1957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stamply - Loyalty Rewards</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;700&family=Roboto+Mono:wght@400;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        :root {
+            --primary: #6366f1;
+            --secondary: #f43f5e;
+            --stamp-color: #6366f1;
+            --stamp-bg: #ffffff;
+            --bg: #f8fafc;
+            --text: #0f172a;
+            --stamp-font: 'Plus Jakarta Sans';
+        }
+
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bg); color: var(--text); overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+        .view { min-height: 100vh; width: 100%; padding-bottom: 120px; }
+        .view:not(.active) { display: none !important; }
+        .view.active { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .loyalty-card { max-width:400px; aspect-ratio: 1.6 / 1; border-radius: 28px; color: white; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2); position: relative; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; }
+        .loyalty-card.flipped { transform: rotateY(180deg); }
+        .card-front, .card-back { position: absolute; inset: 0; backface-visibility: hidden; padding: 15px 18px; display: flex; flex-direction: column; border-radius: 28px; box-sizing: border-box; overflow: hidden; }
+        .card-back { transform: rotateY(180deg); background: white !important; color: var(--text); z-index: 1; }
+        .card-back::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 40px; background: linear-gradient(to top, white, transparent); pointer-events: none; z-index: 5; border-radius: 0 0 28px 28px; }
+        
+        .stamp-grid { display: grid; gap: 8px; margin-top: 5px; flex: 1; min-height: 0; align-content: center; }
+        .stamp-slot { aspect-ratio: 1; background: rgba(255, 255, 255, 0.15); border: 2px dashed rgba(255, 255, 255, 0.3); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 2px; }
+        .stamp-slot.filled { border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+        .stamp-slot.filled::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent); background-size: 200% 100%; animation: shimmer 3s infinite linear; pointer-events: none; border-radius: 50%; }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+        #pull-to-refresh { position: absolute; top: 0; left: 0; right: 0; height: 80px; display: flex; align-items: center; justify-content: center; transform: translateY(-100%); transition: transform 0.1s linear; z-index: 30; }
+        .refresh-indicator { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; opacity: 0; transform: scale(0.5); transition: 0.2s; }
+        .pulling .refresh-indicator { opacity: 1; transform: scale(1); }
+        .refreshing .refresh-indicator { animation: spin 0.8s linear infinite; opacity: 1; transform: scale(1); }
+        
+        .stamp-mark { font-family: var(--stamp-font); font-weight: 800; text-transform: uppercase; transform: rotate(-15deg); line-height: 1; text-align: center; word-break: break-word; pointer-events: none; }
+
+        .spinner { width: 40px; height: 40px; border: 4px solid rgba(99, 102, 241, 0.1); border-left-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        #toast { position: fixed; top: 24px; left: 50%; transform: translateX(-50%) translateY(-120px); background: #1e293b; color: white; padding: 14px 28px; border-radius: 24px; font-weight: 700; font-size: 14px; z-index: 999999; transition: transform 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28); display: flex; align-items: center; gap: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); pointer-events: none; opacity: 0; width: calc(100% - 48px); max-width: 450px; justify-content: center; }
+        #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+        .icon-btn { width: 52px; height: 52px; border-radius: 16px; display: flex; align-items: center; justify-content: center; border: 2px solid transparent; background: #f1f5f9; transition: 0.2s; flex-shrink: 0; }
+        .icon-btn.active { border-color: var(--primary); background: #eef2ff; color: var(--primary); }
+        .icon-btn i { width: 24px; height: 24px; }
+
+        button:disabled { opacity: 0.5; pointer-events: none; }
+        .btn-loading { position: relative; color: transparent !important; }
+        .btn-loading::after { content: ""; position: absolute; width: 20px; height: 20px; top: 50%; left: 50%; margin: -10px 0 0 -10px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 0.8s linear infinite; }
+        .btn-loading-dark::after { border-top-color: var(--text); border-bottom-color: rgba(0,0,0,0.1); border-left-color: rgba(0,0,0,0.1); border-right-color: rgba(0,0,0,0.1); }
+
+        #view-signout { background: white; z-index: 5000; position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        #view-signout.active { display: flex; animation: signoutAnim 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+        @keyframes signoutAnim { 0% { opacity: 0; filter: blur(10px); } 100% { opacity: 1; filter: blur(0); } }
+
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 72px; background: white; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #e2e8f0; z-index: 50; }
+        .nav-item { display: flex; flex-direction: column; align-items: center; color: #64748b; font-size: 10px; font-weight: 700; opacity: 0.6; transition: 0.2s; }
+        .nav-item.active { color: var(--primary); opacity: 1; }
+
+        .color-preview-circle { width: 64px; height: 64px; border-radius: 50%; border: 4px solid white; box-shadow: 0 10px 20px rgba(0,0,0,0.1); cursor: pointer; transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .color-preview-circle:active { transform: scale(0.8); }
+
+        #reader { width: 100% !important; height: 100% !important; border: none !important; border-radius: 32px; overflow: hidden; }
+        #reader video { border-radius: 32px; object-fit: cover !important; width: 100% !important; height: 100% !important; }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        #iro-picker { display: flex; justify-content: center; margin-bottom: 1.5rem; }
+        .version-tag { position: fixed; bottom: 85px; right: 20px; font-size: 10px; font-weight: 800; color: #cbd5e1; z-index: 40; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="version-tag">v0.0.56</div>
+
+    <div id="offline-indicator" class="hidden fixed top-24 left-1/2 -translate-x-1/2 z-[10000] bg-rose-600 text-white px-6 py-3 rounded-full font-black text-[10px] uppercase tracking-widest shadow-2xl flex items-center gap-3 animate-bounce"><i data-lucide="wifi-off" class="w-4 h-4"></i> No Connection</div>
+
+    <div id="toast"><i data-lucide="info" id="toast-icon" class="w-5 h-5"></i><span id="toast-text">Message</span></div>
+
+    <!-- Splash / Loader -->
+    <div id="view-splash" class="view active flex flex-col items-center justify-center bg-indigo-600 text-white z-[10000] fixed inset-0">
+        <h1 class="text-6xl font-black tracking-tighter mb-4">STAMPLY</h1>
+        <div class="mt-8 spinner border-white/20 border-l-white"></div>
+    </div>
+
+    <!-- Sign Out View -->
+    <div id="view-signout" class="view">
+        <div class="relative mb-12">
+            <div class="w-32 h-32 bg-indigo-50 rounded-[48px] flex items-center justify-center animate-[bounce_2s_infinite]"><i data-lucide="log-out" class="w-16 h-16 text-indigo-600"></i></div>
+            <div class="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-500 rounded-full border-4 border-white flex items-center justify-center"><i data-lucide="check" class="text-white w-5 h-5"></i></div>
+        </div>
+        <h1 class="text-4xl font-black text-slate-900 mb-4">Signed Out</h1>
+        <p class="text-slate-400 font-semibold uppercase tracking-widest text-xs">Syncing rewards... See you soon!</p>
+        <div class="mt-16 spinner"></div>
+    </div>
+
+    <div id="global-loader" class="hidden fixed inset-0 bg-white/90 backdrop-blur-md z-[9999] flex flex-col items-center justify-center">
+        <div class="spinner mb-6"></div>
+        <p id="loader-text" class="text-slate-900 font-black text-sm uppercase tracking-widest">Processing...</p>
+    </div>
+
+    <div id="app">
+        <!-- Auth View -->
+        <div id="view-auth" class="view flex flex-col items-center justify-center px-8">
+            <div class="w-24 h-24 bg-indigo-600 rounded-[32px] flex items-center justify-center mb-10 shadow-2xl rotate-12"><i data-lucide="sparkles" class="text-white w-12 h-12"></i></div>
+            <h1 class="text-4xl font-black text-slate-900 mb-3 tracking-tight">Welcome</h1>
+            <p class="text-slate-500 mb-16 text-center font-medium leading-relaxed">Join our rewards program to start collecting stamps today.</p>
+            <button id="btn-login" class="w-full bg-slate-900 text-white py-5 px-6 rounded-2xl flex items-center justify-center gap-4 font-bold shadow-xl active:scale-95 transition-all">
+                <svg width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09zM12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-1.01.67-2.28 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23zM5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84zM12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> Sign in with Google
+            </button>
+            <div class="mt-12 text-[10px] font-black text-slate-300 uppercase tracking-widest flex gap-6">
+                <a href="javascript:void(0)" onclick="showLegal('privacy')" class="hover:text-indigo-600 transition-colors">Privacy Policy</a>
+                <a href="javascript:void(0)" onclick="showLegal('terms')" class="hover:text-indigo-600 transition-colors">Terms of Service</a>
+            </div>
+        </div>
+
+        <!-- Global Header -->
+        <header id="app-header" class="hidden fixed top-0 left-0 right-0 h-20 px-6 flex items-center justify-between z-40 bg-white/60 backdrop-blur-lg">
+            <h1 class="text-xl font-black tracking-tighter text-slate-900" id="header-title">STAMPLY</h1>
+            <div class="flex items-center gap-3">
+                <button id="btn-master-hub" class="hidden w-11 h-11 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg" onclick="router.navigate('master-dashboard')"><i data-lucide="shield-check" class="w-5 h-5"></i></button>
+                <button id="btn-admin-gear" class="hidden w-11 h-11 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100" onclick="router.navigate('admin-settings')"><i data-lucide="settings" class="w-5 h-5"></i></button>
+                <button onclick="router.navigate('profile')" class="w-11 h-11 rounded-2xl overflow-hidden border-2 border-white shadow-lg bg-slate-100 flex items-center justify-center">
+                    <img class="user-photo-class w-full h-full object-cover hidden" src="">
+                    <i data-lucide="user" class="text-slate-400 w-5 h-5"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Customer Home -->
+        <div id="view-customer-home" class="view px-6 pt-24 no-scrollbar relative">
+            <div id="pull-to-refresh">
+                <div class="refresh-indicator"></div>
+            </div>
+            <div class="mb-8">
+                <h2 class="text-[10px] font-bold text-indigo-600 uppercase tracking-[0.2em] mb-1">Your Collection</h2>
+                <h1 id="user-display-name" class="text-3xl font-black text-slate-900 tracking-tight">...</h1>
+            </div>
+            <div id="customer-cards-container" class="space-y-6"></div>
+            <div id="no-cards" class="hidden text-center py-20 bg-white rounded-[40px] border border-slate-100 shadow-inner">
+                <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6"><i data-lucide="qr-code" class="text-slate-200 w-10 h-10"></i></div>
+                <p class="text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em]">Scan to begin</p>
+            </div>
+        </div>
+
+        <!-- History -->
+        <div id="view-history" class="view px-6 pt-24">
+            <div class="flex items-center gap-4 mb-8">
+                <button onclick="router.navigate('customer-home')" class="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-100"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
+                <h1 class="text-2xl font-black tracking-tight text-slate-900 uppercase text-xs tracking-[0.2em]">Transaction Log</h1>
+            </div>
+            <div id="full-history-list" class="space-y-4"></div>
+            <div id="no-history" class="hidden text-center py-20 text-slate-300 font-bold uppercase text-[10px] tracking-[0.3em]">Zero Activity</div>
+        </div>
+
+        <!-- Admin Dashboard -->
+        <div id="view-admin-dashboard" class="view px-6 pt-24">
+            <div class="flex p-1.5 bg-slate-100 rounded-[28px] mb-8">
+                <button onclick="admin.setTab('metrics')" id="admin-tab-metrics" class="flex-1 py-4 rounded-[22px] font-black text-[10px] uppercase tracking-widest transition-all bg-white shadow-sm">Metrics</button>
+                <button onclick="admin.setTab('customers')" id="admin-tab-customers" class="flex-1 py-4 rounded-[22px] font-black text-[10px] uppercase transition-all text-slate-500">Customers</button>
+            </div>
+
+            <div id="admin-content-metrics" class="space-y-6">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-white p-7 rounded-[32px] border border-slate-100 shadow-sm"><div id="stat-customers" class="text-3xl font-black mb-1">0</div><div class="text-[10px] uppercase font-black text-slate-400 tracking-widest leading-tight">Total Members</div></div>
+                    <div class="bg-white p-7 rounded-[32px] border border-slate-100 shadow-sm"><div id="stat-stamps-today" class="text-3xl font-black mb-1">0</div><div class="text-[10px] uppercase font-black text-slate-400 tracking-widest leading-tight">Claims Today</div></div>
+                </div>
+                <div class="grid grid-cols-1 gap-4">
+                    <div class="bg-indigo-600 p-8 rounded-[40px] text-white shadow-2xl shadow-indigo-100 relative overflow-hidden">
+                        <div class="relative z-10">
+                            <h3 class="text-[10px] font-black uppercase tracking-[0.2em] opacity-70 mb-2">Monthly Performance</h3>
+                            <p id="stat-stamps-month" class="text-4xl font-black mb-1">0</p>
+                            <p class="text-[10px] font-bold opacity-60 uppercase tracking-widest">Stamps Issued This Month</p>
+                        </div>
+                        <i data-lucide="bar-chart-3" class="absolute top-8 right-8 w-12 h-12 text-white/10"></i>
+                    </div>
+                </div>
+
+                <div class="pt-4">
+                    <h2 class="text-sm font-black text-slate-900 mb-6 uppercase tracking-widest flex items-center gap-3"><i data-lucide="crown" class="text-amber-500 w-4 h-4"></i> Top Loyal Fans</h2>
+                    <div id="admin-top-customers" class="space-y-3 mb-8"></div>
+                    
+                    <button onclick="admin.downloadCSV()" class="w-full bg-white border border-slate-100 py-6 rounded-[32px] text-slate-900 font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-4 shadow-sm active:scale-95 transition-all">
+                        <i data-lucide="download" class="w-4 h-4 text-indigo-600"></i> Download Customer List (CSV)
+                    </button>
+                </div>
+            </div>
+
+            <div id="admin-content-customers" class="hidden">
+                <h2 class="text-xl font-black text-slate-900 mb-6 tracking-tight">Recent Activity</h2>
+                <div id="admin-customer-list" class="space-y-3"></div>
+            </div>
+        </div>
+
+        <!-- Admin Settings -->
+        <div id="view-admin-settings" class="view px-6 pt-24 pb-32">
+            <div class="flex items-center justify-between mb-10">
+                <button onclick="router.navigate('admin-dashboard')" class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100"><i data-lucide="chevron-left"></i></button>
+                <h1 class="text-2xl font-black tracking-tight">Brand Identity</h1>
+                <div class="w-12"></div>
+            </div>
+
+            <div class="space-y-10">
+                <!-- 1. Store Info -->
+                <div class="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+                    <h3 class="font-black mb-8 flex items-center gap-3 text-slate-900 text-sm uppercase tracking-widest"><i data-lucide="store" class="w-4 h-4 text-indigo-600"></i> Store Info</h3>
+                    <div class="space-y-8">
+                        <div class="flex items-center gap-6">
+                            <div class="w-24 h-24 rounded-[32px] bg-slate-50 flex items-center justify-center overflow-hidden border-2 border-white shadow-inner">
+                                <img id="logo-preview-img" src="" class="w-full h-full object-cover hidden">
+                                <i data-lucide="image" id="logo-placeholder" class="text-slate-300 w-10 h-10"></i>
+                            </div>
+                            <label class="flex-1 bg-slate-900 text-white py-5 rounded-2xl text-center text-[10px] font-black tracking-[0.2em] cursor-pointer active:scale-95 transition-all">UPLOAD LOGO <input type="file" id="upload-logo" class="hidden" accept="image/*"></label>
+                        </div>
+                        <input type="text" id="set-store-name" placeholder="Business Name" class="w-full bg-slate-50 p-5 rounded-2xl font-black text-sm border border-slate-100 outline-none">
+                        <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">Maps Location Link</label>
+                        <input type="text" id="set-store-link" placeholder="https://maps.google.com/..." class="w-full bg-slate-50 p-5 rounded-2xl font-black text-sm border border-slate-100 outline-none"></div>
+                        <div><label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">Reward Description</label>
+                        <textarea id="set-reward-desc" placeholder="One free coffee on full card!" class="w-full bg-slate-50 p-5 rounded-2xl font-black text-sm border border-slate-100 outline-none h-32 resize-none"></textarea></div>
+                    </div>
+                </div>
+
+                <!-- 3. Live Preview -->
+                <div><p class="text-[10px] uppercase font-black text-slate-400 mb-4 tracking-[0.3em] ml-1">Card Preview</p><div id="preview-card-container"></div></div>
+
+                <!-- 4. Gradient Controls -->
+                <div class="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+                    <h3 class="font-black mb-8 flex items-center gap-3 text-slate-900 text-sm uppercase tracking-widest"><i data-lucide="palette" class="w-4 h-4 text-indigo-600"></i> Colors</h3>
+                    <div class="flex gap-4 justify-center flex-wrap">
+                        <div class="flex flex-col items-center gap-2">
+                            <div id="btn-pick-primary" class="color-preview-circle" style="background: var(--primary)"></div>
+                            <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest">Primary</span>
+                        </div>
+                        <div class="flex flex-col items-center gap-2">
+                            <div id="btn-pick-secondary" class="color-preview-circle" style="background: var(--secondary)"></div>
+                            <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest">Secondary</span>
+                        </div>
+                        <div class="flex flex-col items-center gap-2">
+                            <div id="btn-pick-stamp" class="color-preview-circle" style="background: var(--stamp-color)"></div>
+                            <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest">Stamp Icon</span>
+                        </div>
+                        <div class="flex flex-col items-center gap-2">
+                            <div id="btn-pick-stamp-bg" class="color-preview-circle" style="background: var(--stamp-bg)"></div>
+                            <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest">Stamp BG</span>
+                        </div>
+                    </div>
+                    <!-- Color Picker Modal/Window Overlay -->
+                    <div id="color-picker-overlay" class="hidden fixed inset-0 z-[10000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+                        <div class="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl relative">
+                            <button onclick="document.getElementById('color-picker-overlay').classList.add('hidden')" class="absolute top-6 right-6 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900"><i data-lucide="x" class="w-6 h-6"></i></button>
+                            <h3 class="font-black text-xl mb-6 tracking-tight text-center" id="picker-title">Select Color</h3>
+                            <div class="space-y-6">
+                                <div id="iro-picker"></div>
+                                <div class="flex items-center gap-5">
+                                    <input type="text" id="set-color-hex" class="flex-1 bg-slate-50 p-5 rounded-2xl font-black text-lg border border-slate-100 uppercase tracking-widest text-center" maxlength="7">
+                                </div>
+                                <div class="grid grid-cols-5 gap-4" id="preset-colors">
+                                    <button class="w-10 h-10 rounded-full border-4 border-white shadow-sm" style="background:#6366f1" onclick="settings.setPreset('#6366f1')"></button>
+                                    <button class="w-10 h-10 rounded-full border-4 border-white shadow-sm" style="background:#f43f5e" onclick="settings.setPreset('#f43f5e')"></button>
+                                    <button class="w-10 h-10 rounded-full border-4 border-white shadow-sm" style="background:#10b981" onclick="settings.setPreset('#10b981')"></button>
+                                    <button class="w-10 h-10 rounded-full border-4 border-white shadow-sm border-slate-100" style="background:#ffffff" onclick="settings.setPreset('#ffffff')"></button>
+                                    <button class="w-10 h-10 rounded-full border-4 border-white shadow-sm" style="background:#000000" onclick="settings.setPreset('#000000')"></button>
+                                </div>
+                                <button onclick="document.getElementById('color-picker-overlay').classList.add('hidden')" class="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black shadow-xl uppercase tracking-widest">Done</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. Stamp Style -->
+                <div class="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+                    <h3 class="font-black mb-8 flex items-center gap-3 text-slate-900 text-sm uppercase tracking-widest"><i data-lucide="stamp" class="w-4 h-4 text-indigo-600"></i> Stamp Style</h3>
+                    <div class="space-y-8">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">Stamp Text</label>
+                            <input type="text" id="set-stamp-text" placeholder="PAID" class="w-full bg-slate-50 p-5 rounded-2xl font-black text-sm border border-slate-100 outline-none" maxlength="8">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4 ml-1">Stamp Icon</label>
+                            <div id="icon-selector" class="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+                                <button data-icon="check" class="icon-btn flex items-center justify-center"><i data-lucide="check"></i></button>
+                                <button data-icon="star" class="icon-btn flex items-center justify-center"><i data-lucide="star"></i></button>
+                                <button data-icon="heart" class="icon-btn flex items-center justify-center"><i data-lucide="heart"></i></button>
+                                <button data-icon="coffee" class="icon-btn flex items-center justify-center"><i data-lucide="coffee"></i></button>
+                                <button data-icon="utensils" class="icon-btn flex items-center justify-center"><i data-lucide="utensils"></i></button>
+                                <button data-icon="shopping-cart" class="icon-btn flex items-center justify-center"><i data-lucide="shopping-cart"></i></button>
+                                <button data-icon="tag" class="icon-btn flex items-center justify-center"><i data-lucide="tag"></i></button>
+                                <button data-icon="shirt" class="icon-btn flex items-center justify-center"><i data-lucide="shirt"></i></button>
+                                <button data-icon="pen" class="icon-btn flex items-center justify-center"><i data-lucide="pen"></i></button>
+                                <button data-icon="scissors" class="icon-btn flex items-center justify-center"><i data-lucide="scissors"></i></button>
+                                <button data-icon="wrench" class="icon-btn flex items-center justify-center"><i data-lucide="wrench"></i></button>
+                                <button data-icon="award" class="icon-btn flex items-center justify-center"><i data-lucide="award"></i></button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">Card Font</label>
+                            <select id="set-stamp-font" class="w-full bg-slate-50 p-5 rounded-2xl font-black text-sm border border-slate-100 outline-none"><option value="'Plus Jakarta Sans'">Jakarta Sans</option><option value="'Inter'">Inter</option><option value="'Roboto Mono'">Roboto Mono</option><option value="'Playfair Display'">Playfair Display</option></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Staff Access -->
+                <div class="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm">
+                    <h3 class="font-black mb-8 flex items-center gap-3 text-slate-900 text-sm uppercase tracking-widest"><i data-lucide="users" class="w-4 h-4 text-indigo-600"></i> Staff Access</h3>
+                    <div class="space-y-6">
+                        <button onclick="document.getElementById('staff-register-overlay').classList.remove('hidden')" class="w-full bg-slate-900 text-white py-5 rounded-2xl text-[10px] font-black tracking-widest uppercase shadow-lg active:scale-95 transition-all">Add Staff Member</button>
+                        <div id="admin-staff-list" class="space-y-3 pt-4 border-t border-slate-50"></div>
+                    </div>
+                </div>
+
+                <!-- Staff Register Modal -->
+                <div id="staff-register-overlay" class="hidden fixed inset-0 z-[10000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+                    <div class="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl relative">
+                        <button onclick="document.getElementById('staff-register-overlay').classList.add('hidden')" class="absolute top-6 right-6 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900"><i data-lucide="x" class="w-6 h-6"></i></button>
+                        <h3 class="font-black text-xl mb-6 tracking-tight text-center">New Staff</h3>
+                        <div class="space-y-6">
+                            <input type="text" id="add-staff-name" placeholder="Full Name" class="w-full bg-slate-50 p-5 rounded-2xl font-black text-sm border border-slate-100 outline-none">
+                            <input type="email" id="add-staff-email" placeholder="Email Address" class="w-full bg-slate-50 p-5 rounded-2xl font-black text-sm border border-slate-100 outline-none">
+                            <button onclick="settings.addStaff()" class="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black shadow-xl uppercase tracking-widest">Authorize Access</button>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="btn-save-settings" class="w-full bg-indigo-600 text-white py-6 rounded-[32px] font-black shadow-2xl shadow-indigo-200 active:scale-95 transition-all text-lg tracking-widest uppercase">Publish Changes</button>
+            </div>
+        </div>
+
+        <!-- Master Dashboard -->
+        <div id="view-master-dashboard" class="view px-6 pt-24">
+            <div class="flex items-center justify-between mb-8">
+                <button onclick="router.navigate('customer-home')" class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100"><i data-lucide="chevron-left"></i></button>
+                <h1 class="text-2xl font-black tracking-tight">Master Control</h1>
+                <div class="w-12"></div>
+            </div>
+            <div class="bg-indigo-600 p-8 rounded-[40px] text-white mb-10 shadow-2xl shadow-indigo-200">
+                <h2 class="font-black text-sm uppercase tracking-[0.2em] opacity-80 mb-2">Platform Status</h2>
+                <p class="text-3xl font-black mb-6">Merchant Approval Hub</p>
+                <div class="flex gap-4">
+                    <div class="bg-white/20 p-4 rounded-2xl flex-1 text-center"><p id="master-stat-requests" class="text-xl font-black">0</p><p class="text-[8px] font-black uppercase tracking-widest opacity-70">New Requests</p></div>
+                    <div class="bg-white/20 p-4 rounded-2xl flex-1 text-center"><p id="master-stat-total" class="text-xl font-black">0</p><p class="text-[8px] font-black uppercase tracking-widest opacity-70">Total Stores</p></div>
+                </div>
+            </div>
+            <h3 class="font-black text-slate-900 mb-6 uppercase text-[10px] tracking-widest ml-1">Pending Approvals</h3>
+            <div id="master-request-list" class="space-y-4"></div>
+        </div>
+
+        <!-- Stationary QR Modal -->
+        <div id="static-qr-overlay" class="hidden fixed inset-0 z-[20000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+            <div class="bg-white w-full max-w-sm rounded-[48px] p-8 shadow-2xl relative overflow-hidden flex flex-col">
+                <button onclick="document.getElementById('static-qr-overlay').classList.add('hidden')" class="absolute top-6 right-6 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900 z-10"><i data-lucide="x" class="w-6 h-6"></i></button>
+                <div class="flex-1 overflow-y-auto no-scrollbar py-4">
+                    <h3 class="font-black text-2xl mb-8 tracking-tight text-center">Stationary QR</h3>
+                    <div id="static-qr-preview-container" class="mb-10 scale-100 origin-top"></div>
+                    <div class="bg-slate-50 p-8 rounded-[40px] border border-slate-100 mb-8 text-center">
+                        <div id="static-qr-canvas" class="flex justify-center mb-6"></div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">Customers can scan this to get 1 stamp. (Limit: Once per user)</p>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-4 p-4 bg-indigo-50 rounded-3xl">
+                            <i data-lucide="map-pin" class="text-indigo-600"></i>
+                            <p id="static-qr-location" class="text-[10px] font-bold text-indigo-900 truncate">No location set</p>
+                        </div>
+                    </div>
+                </div>
+                <button id="btn-request-physical" onclick="admin.requestPhysicalPrint()" class="w-full mt-6 bg-slate-900 text-white py-5 rounded-[28px] font-black shadow-xl uppercase tracking-widest text-[10px] flex items-center justify-center gap-3">Request Physical Print <i data-lucide="printer" class="w-4 h-4"></i></button>
+            </div>
+        </div>
+
+        <!-- Master Admin: Physical Print Request Detail -->
+        <div id="master-print-detail-overlay" class="hidden fixed inset-0 z-[20000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+            <div class="bg-white w-full max-w-md rounded-[48px] p-8 shadow-2xl relative flex flex-col max-h-[90vh]">
+                <button onclick="document.getElementById('master-print-detail-overlay').classList.add('hidden')" class="absolute top-6 right-6 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900 z-10"><i data-lucide="x" class="w-6 h-6"></i></button>
+                <div class="flex-1 overflow-y-auto no-scrollbar">
+                    <h3 class="font-black text-2xl mb-8 tracking-tight text-center">Print Request</h3>
+                    <div id="master-print-design-preview" class="p-8 bg-slate-100 rounded-[40px] mb-8 flex flex-col items-center">
+                        <!-- Preview content -->
+                    </div>
+                    <div id="master-print-info" class="space-y-4 mb-8"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <button id="btn-master-print-reject" class="py-5 bg-slate-100 text-slate-400 font-black rounded-2xl uppercase tracking-widest text-xs">Reject</button>
+                    <button id="btn-master-print-approve" class="py-5 bg-indigo-600 text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg">Approve</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Merchant Apply Modal -->
+        <div id="merchant-apply-overlay" class="hidden fixed inset-0 z-[10000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+            <div class="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl relative">
+                <button onclick="document.getElementById('merchant-apply-overlay').classList.add('hidden')" class="absolute top-6 right-6 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900"><i data-lucide="x" class="w-6 h-6"></i></button>
+                <div class="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6"><i data-lucide="store" class="text-indigo-600 w-10 h-10"></i></div>
+                <h3 class="font-black text-2xl mb-2 tracking-tight text-center">Register Store</h3>
+                <p class="text-slate-400 font-bold text-xs mb-10 text-center leading-relaxed">Launch your digital loyalty program today. We'll review your application instantly.</p>
+                <div class="space-y-6">
+                    <input type="text" id="apply-store-name" placeholder="Official Business Name" class="w-full bg-slate-50 p-5 rounded-2xl font-black text-sm border border-slate-100 outline-none">
+            <button onclick="onboarding.submitApplication()" id="btn-apply-submit" class="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black shadow-xl uppercase tracking-widest text-xs">Submit Application</button>
+        </div>
+    </div>
+</div>
+
+        <!-- Merchant Support Modal (Post-Apply) -->
+        <div id="merchant-support-overlay" class="hidden fixed inset-0 z-[11000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+            <div class="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl relative text-center">
+                <div class="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6"><i data-lucide="headphones" class="text-emerald-600 w-10 h-10"></i></div>
+                <h3 class="font-black text-2xl mb-2 tracking-tight">Application Sent!</h3>
+                <p class="text-slate-400 font-bold text-xs mb-10 leading-relaxed">To complete your verification and activate your store, please contact our merchant support team.</p>
+                <div class="space-y-4">
+                    <a id="btn-contact-whatsapp" href="#" target="_blank" class="w-full bg-emerald-500 text-white py-5 rounded-[24px] font-black shadow-xl uppercase tracking-widest text-xs flex items-center justify-center gap-3"><i data-lucide="message-circle"></i> WhatsApp Support</a>
+                    <a id="btn-contact-email" href="#" class="w-full bg-slate-900 text-white py-5 rounded-[24px] font-black shadow-xl uppercase tracking-widest text-xs flex items-center justify-center gap-3"><i data-lucide="mail"></i> Email Support</a>
+                </div>
+                <button onclick="document.getElementById('merchant-support-overlay').classList.add('hidden')" class="mt-8 text-slate-300 font-black uppercase text-[10px] tracking-widest">Close</button>
+            </div>
+        </div>
+
+        <!-- Scan -->
+        <div id="view-scan" class="view px-8 pt-24 text-center">
+            <h1 class="text-3xl font-black mb-4 tracking-tight">Scanner</h1>
+            <div id="reader-container" class="rounded-[48px] overflow-hidden bg-slate-900 aspect-square shadow-2xl border-8 border-white relative">
+                <div id="reader" style="width: 100%; height: 100%;"></div>
+                <div id="scanner-placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-800 text-white p-8">
+                    <div class="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-6"><i data-lucide="camera" class="w-10 h-10 text-white/40"></i></div>
+                    <p class="text-sm font-bold opacity-60 mb-8 leading-relaxed">Camera access is required to scan QR codes.</p>
+                    <button onclick="initScanner(true)" class="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">Start Camera</button>
+                </div>
+                <div id="scanner-ui" class="hidden absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                    <div class="w-3/4 h-3/4 border-4 border-white/20 rounded-[40px] animate-pulse"></div>
+                </div>
+            </div>
+            <p class="mt-8 text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em]">Align QR Code</p>
+            <button onclick="router.navigate('customer-home')" class="mt-16 w-full py-5 bg-white border border-slate-100 rounded-[28px] font-black text-slate-400 shadow-sm">CANCEL</button>
+        </div>
+
+        <!-- Staff -->
+        <div id="view-staff-qr" class="view px-6 pt-24">
+            <div class="flex p-1.5 bg-slate-100 rounded-[28px] mb-10">
+                <button onclick="staff.setTab('qr')" id="staff-tab-qr" class="flex-1 py-4 rounded-[22px] font-black text-[10px] uppercase tracking-widest transition-all bg-white shadow-sm">Station QR</button>
+                <button onclick="staff.setTab('approvals')" id="staff-tab-approvals" class="flex-1 py-4 rounded-[22px] font-black text-[10px] uppercase transition-all text-slate-500">History</button>
+            </div>
+            <div id="staff-content-qr" class="bg-white p-12 rounded-[48px] shadow-2xl text-center border border-slate-50">
+                <div id="qr-container" class="flex justify-center mb-6 overflow-hidden rounded-3xl bg-white p-2"></div>
+                <div class="mb-10">
+                    <div id="qr-timer" class="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Refreshing in 60s</div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div id="qr-timer-bar" class="bg-indigo-600 h-full w-full transition-all duration-1000 linear"></div>
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button id="btn-copy-link" class="flex-1 py-5 bg-indigo-50 text-indigo-600 font-black rounded-2xl flex items-center justify-center gap-3 active:scale-95 transition-all text-xs tracking-widest uppercase">Copy Link</button>
+                    <button onclick="renderStaffStation(true); showToast('QR Refreshed!', 'refresh-cw');" class="w-16 h-16 bg-slate-900 text-white rounded-2xl flex items-center justify-center active:scale-95 transition-all shadow-xl"><i data-lucide="refresh-cw"></i></button>
+                </div>
+            </div>
+            <div id="staff-content-approvals" class="hidden">
+                <div id="staff-pending-list" class="space-y-4"></div>
+            </div>
+        </div>
+
+        <!-- Legal Overlay -->
+        <div id="legal-overlay" class="hidden fixed inset-0 z-[30000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+            <div class="bg-white w-full max-w-md rounded-[48px] p-10 shadow-2xl relative flex flex-col max-h-[85vh]">
+                <button onclick="document.getElementById('legal-overlay').classList.add('hidden')" class="absolute top-8 right-8 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900 z-10"><i data-lucide="x" class="w-6 h-6"></i></button>
+                <div class="flex-1 overflow-y-auto no-scrollbar pr-2">
+                    <h3 id="legal-title" class="font-black text-2xl mb-8 tracking-tight">Legal Document</h3>
+                    <div id="legal-content" class="text-slate-600 text-sm font-medium leading-relaxed space-y-6 pb-10">
+                        <!-- Content injected via JS -->
+                    </div>
+                </div>
+                <button onclick="document.getElementById('legal-overlay').classList.add('hidden')" class="w-full mt-8 bg-slate-900 text-white py-5 rounded-[28px] font-black shadow-xl uppercase tracking-widest text-xs">I Understand</button>
+            </div>
+        </div>
+
+        <!-- Confirm Dialog Overlay -->
+        <div id="confirm-overlay" class="hidden fixed inset-0 z-[20000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+            <div class="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center">
+                <div id="confirm-icon-bg" class="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <i data-lucide="alert-circle" id="confirm-icon" class="w-10 h-10"></i>
+                </div>
+                <h3 id="confirm-title" class="font-black text-2xl mb-2 tracking-tight">Are you sure?</h3>
+                <p id="confirm-msg" class="text-slate-400 font-bold text-sm mb-10 leading-relaxed px-2"></p>
+                <div class="grid grid-cols-2 gap-4">
+                    <button id="btn-confirm-cancel" class="py-5 bg-slate-100 text-slate-400 font-black rounded-2xl uppercase tracking-widest text-xs">Cancel</button>
+                    <button id="btn-confirm-action" class="py-5 text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg"></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Detail Overlay -->
+        <div id="history-detail-overlay" class="hidden fixed inset-0 z-[15000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+            <div class="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl relative">
+                <button onclick="document.getElementById('history-detail-overlay').classList.add('hidden')" class="absolute top-6 right-6 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-900"><i data-lucide="x" class="w-6 h-6"></i></button>
+                <h3 class="font-black text-xl mb-8 tracking-tight text-center">Transaction Details</h3>
+                <div id="history-detail-content" class="space-y-6">
+                    <!-- Content injected via JS -->
+                </div>
+                <button onclick="document.getElementById('history-detail-overlay').classList.add('hidden')" class="w-full mt-10 bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl">Close</button>
+            </div>
+        </div>
+
+        <!-- Profile View -->
+        <div id="view-profile" class="view px-8 pt-24">
+            <div class="flex items-center justify-between mb-8">
+                <button onclick="router.navigate('customer-home')" class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100"><i data-lucide="chevron-left" class="w-12 h-12"></i></button>
+                <h1 class="text-2xl font-black tracking-tight">Your Profile</h1>
+                <div class="w-12"></div>
+            </div>
+
+            <div class="bg-white p-10 rounded-[56px] text-center mb-10 shadow-sm border border-slate-50">
+                <div class="w-32 h-32 rounded-[40px] mx-auto mb-8 overflow-hidden border-8 border-indigo-50 bg-slate-100 flex items-center justify-center">
+                    <img id="profile-photo" src="" class="w-full h-full object-cover hidden">
+                    <i data-lucide="user" class="text-slate-400 w-12 h-12"></i>
+                </div>
+                <h2 id="profile-name" class="text-3xl font-black text-slate-900 tracking-tight">...</h2>
+                <p id="profile-email" class="text-slate-400 font-bold mb-10">...</p>
+                <div id="role-badge" class="px-6 py-2 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-[0.2em]">Member</div>
+            </div>
+
+            <div id="customer-onboarding" class="hidden mb-10">
+                <button id="btn-onboarding-cta" onclick="document.getElementById('merchant-apply-overlay').classList.remove('hidden')" class="w-full bg-indigo-600 p-8 rounded-[48px] text-white text-left relative overflow-hidden shadow-2xl shadow-indigo-100 group active:scale-95 transition-all">
+                    <div class="relative z-10">
+                        <h3 id="onboarding-cta-title" class="font-black text-xl mb-1">Own a Business?</h3>
+                        <p id="onboarding-cta-sub" class="text-white/70 text-xs font-bold uppercase tracking-widest">Register Store</p>
+                    </div>
+                    <i data-lucide="arrow-up-right" class="absolute top-8 right-8 w-8 h-8 text-white/30 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform"></i>
+                    <div class="absolute -bottom-6 -right-6 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+                </button>
+            </div>
+            
+            <div id="staff-actions" class="hidden space-y-4 mb-10">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Station Access</p>
+                <button onclick="router.navigate('staff-qr')" class="w-full bg-white p-7 rounded-[32px] flex items-center justify-between border border-slate-100 shadow-sm active:scale-95 transition-all">
+                    <div class="flex items-center gap-5"><div class="w-14 h-14 bg-emerald-500 rounded-[22px] flex items-center justify-center text-white shadow-xl shadow-emerald-100"><i data-lucide="qr-code"></i></div><div><p class="font-black text-slate-900">Station QR</p><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Staff Station 01</p></div></div>
+                    <i data-lucide="chevron-right" class="text-slate-300"></i>
+                </button>
+            </div>
+            
+            <div id="admin-actions" class="hidden space-y-4 mb-6">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Managed Stores</p>
+                <button onclick="router.navigate('admin-dashboard')" class="w-full bg-white p-7 rounded-[32px] flex items-center justify-between border border-slate-100 shadow-sm active:scale-95 transition-all mb-4">
+                    <div class="flex items-center gap-5"><div class="w-14 h-14 bg-indigo-600 rounded-[22px] flex items-center justify-center text-white shadow-xl shadow-indigo-100"><i data-lucide="layout-dashboard"></i></div><div><p class="font-black text-slate-900">Merchant Hub</p><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Store Dashboard</p></div></div>
+                    <i data-lucide="chevron-right" class="text-slate-300"></i>
+                </button>
+                <button onclick="admin.showStaticQr()" class="w-full bg-slate-900 p-7 rounded-[32px] flex items-center justify-between border border-slate-800 shadow-xl active:scale-95 transition-all">
+                    <div class="flex items-center gap-5"><div class="w-14 h-14 bg-white/10 rounded-[22px] flex items-center justify-center text-white shadow-lg"><i data-lucide="qr-code"></i></div><div><p class="font-black text-white">Stationary QR</p><p class="text-[10px] font-bold text-white/40 uppercase tracking-widest mt-1">Static Store Code</p></div></div>
+                    <i data-lucide="arrow-right" class="text-white/20"></i>
+                </button>
+            </div>
+
+            <button onclick="signOutProcess()" class="w-full bg-rose-50 text-rose-600 py-6 rounded-[32px] font-black flex items-center justify-center gap-4 active:scale-95 transition-all shadow-sm border border-rose-100 text-sm tracking-widest mb-4">
+                <i data-lucide="log-out" class="w-5 h-5"></i> SIGN OUT
+            </button>
+
+            <button onclick="deleteAccountProcess()" class="w-full bg-white text-slate-300 py-4 rounded-[28px] font-black flex items-center justify-center gap-3 active:scale-95 transition-all text-[9px] tracking-[0.2em] uppercase">
+                <i data-lucide="trash-2" class="w-3 h-3"></i> Delete Account Permanently
+            </button>
+
+            <div class="mt-12 text-center pb-8">
+                <div class="flex justify-center gap-6 text-[9px] font-black text-slate-300 uppercase tracking-widest mb-4">
+                    <a href="javascript:void(0)" onclick="showLegal('privacy')" class="hover:text-indigo-600">Privacy Policy</a>
+                    <a href="javascript:void(0)" onclick="showLegal('terms')" class="hover:text-indigo-600">Terms of Service</a>
+                </div>
+                <p class="text-[8px] font-bold text-slate-200 uppercase tracking-widest">© 2026 Stamply Rewards Platform</p>
+            </div>
+        </div>
+
+        <nav id="nav-customer" class="bottom-nav hidden px-12">
+            <button onclick="router.navigate('customer-home')" id="nav-home" class="nav-item active"><i data-lucide="credit-card" class="w-7 h-7 mb-1.5"></i>Cards</button>
+            <button onclick="router.navigate('scan')" id="nav-scan" class="nav-item"><div class="w-16 h-16 bg-slate-900 rounded-[24px] flex items-center justify-center -mt-14 border-4 border-white shadow-2xl text-white"><i data-lucide="scan" class="w-8 h-8"></i></div>Scan</button>
+            <button onclick="router.navigate('history')" id="nav-history" class="nav-item"><i data-lucide="history" class="w-7 h-7 mb-1.5"></i>History</button>
+        </nav>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, deleteUser } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getDatabase, ref, set, get, onValue, update, push, increment, serverTimestamp, child, remove, query, orderByChild, equalTo, limitToLast, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = { apiKey: "AIzaSyApVszxVakX-KR9VlDFRRBcj_fh9nKRsto", authDomain: "loyalty-card-93c9d.firebaseapp.com", databaseURL: "https://loyalty-card-93c9d-default-rtdb.asia-southeast1.firebasedatabase.app/", projectId: "loyalty-card-93c9d", storageBucket: "loyalty-card-93c9d.firebasestorage.app", messagingSenderId: "444863015808", appId: "1:444863015808:web:f3acb9560b1777711eaf65" };
+        const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getDatabase(app), provider = new GoogleAuthProvider();
+
+        const MASTER_ADMIN_EMAIL = "imaduddinmudzakar@gmail.com";
+        const STAMP_DEFAULTS = { mode: 'visit', maxStamps: 9, color: '#6366f1', secondaryColor: '#f43f5e', stampColor: '#6366f1', stampBgColor: '#ffffff', name: 'Stamply Merchant', logoUrl: '', stampIcon: 'award', stampText: 'PAID', stampFont: "'Plus Jakarta Sans'", location: '', reward: '', staff_list: {} };
+        let currentUser = null, currentRole = 'customer', currentStoreId = 'default-store';
+        let storeConfig = { ...STAMP_DEFAULTS };
+        let cardListener = null;
+
+        const views = { splash: document.getElementById('view-splash'), auth: document.getElementById('view-auth'), 'customer-home': document.getElementById('view-customer-home'), history: document.getElementById('view-history'), scan: document.getElementById('view-scan'), 'staff-qr': document.getElementById('view-staff-qr'), 'admin-dashboard': document.getElementById('view-admin-dashboard'), 'admin-settings': document.getElementById('view-admin-settings'), profile: document.getElementById('view-profile'), signout: document.getElementById('view-signout'), 'master-dashboard': document.getElementById('view-master-dashboard') };
+        
+        const router = {
+            navigate: (name) => {
+                if(window.staffQrInterval) { clearInterval(window.staffQrInterval); window.staffQrInterval = null; }
+                if(scanner && scanner.isScanning) { scanner.stop().catch(e => console.error(e)); scanner.isScanning = false; }
+                Object.values(views).forEach(v => v?.classList.remove('active'));
+                if (views[name]) views[name].classList.add('active');
+                
+                const isCustView = (name==='customer-home'||name==='scan'||name==='history');
+                document.getElementById('nav-customer').classList.toggle('hidden', !isCustView);
+                if(isCustView) {
+                    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+                    if(name==='customer-home') document.getElementById('nav-home').classList.add('active');
+                    if(name==='scan') document.getElementById('nav-scan').classList.add('active');
+                    if(name==='history') document.getElementById('nav-history').classList.add('active');
+                }
+
+                document.getElementById('app-header').classList.toggle('hidden', name==='auth'||name==='splash'||name==='signout');
+                document.getElementById('btn-admin-gear').classList.toggle('hidden', currentRole!=='admin');
+                document.getElementById('btn-master-hub').classList.toggle('hidden', currentUser?.email !== MASTER_ADMIN_EMAIL);
+
+                if(name==='admin-settings') settings.init();
+                if(name==='staff-qr') { renderStaffStation(); staff.loadApprovals(); }
+                if(name==='admin-dashboard') admin.init();
+                if(name==='history') loadHistory();
+                if(name==='scan') initScanner();
+                if(name==='master-dashboard') master.init();
+                
+                window.scrollTo(0,0); lucide.createIcons();
+            }
+        };
+
+        window.buttonToggleLoading = (btnId, isLoading, dark = false) => {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+            btn.disabled = isLoading;
+            if (isLoading) btn.classList.add('btn-loading', dark ? 'btn-loading-dark' : 'btn-loading-placeholder');
+            else btn.classList.remove('btn-loading', 'btn-loading-dark', 'btn-loading-placeholder');
+        };
+
+        const onboarding = {
+            submitApplication: async () => {
+                const name = document.getElementById('apply-store-name').value;
+                if(!name) return showToast("Enter Business Name", "alert-circle");
+                buttonToggleLoading('btn-apply-submit', true);
+                try {
+                    await set(ref(db, `merchant_requests/${currentUser.uid}`), {
+                        uid: currentUser.uid,
+                        displayName: currentUser.displayName,
+                        email: currentUser.email,
+                        storeName: name,
+                        status: 'pending',
+                        timestamp: serverTimestamp()
+                    });
+                    
+                    const whatsappMsg = encodeURIComponent(`Hi! I'd like to register my store "${name}" (Email: ${currentUser.email}). I have submitted my request.`);
+                    const emailSubject = encodeURIComponent(`Merchant Registration: ${name}`);
+                    const emailBody = encodeURIComponent(`Store Name: ${name}\nMerchant Email: ${currentUser.email}\nUID: ${currentUser.uid}`);
+                    
+                    document.getElementById('btn-contact-whatsapp').href = `https://wa.me/60193701294?text=${whatsappMsg}`;
+                    document.getElementById('btn-contact-email').href = `mailto:imaduddinmudzakar@gmail.com?subject=${emailSubject}&body=${emailBody}`;
+                    
+                    document.getElementById('merchant-apply-overlay').classList.add('hidden');
+                    document.getElementById('merchant-support-overlay').classList.remove('hidden');
+                    showToast("Application Submitted", "check");
+                } catch (e) { showToast(e.message, "x"); }
+            }
+        };
+        window.onboarding = onboarding;
+
+        const master = {
+            init: () => {
+                if(currentUser.email !== MASTER_ADMIN_EMAIL) return router.navigate('customer-home');
+                onValue(ref(db, 'merchant_requests'), (snap) => {
+                    const list = Object.values(snap.val() || {}).filter(r => r.status === 'pending');
+                    document.getElementById('master-stat-requests').innerText = list.length;
+                    const target = document.getElementById('master-request-list');
+                    let html = list.map(r => `
+                        <div onclick="master.showDetail('${r.uid}')" class="bg-white p-6 rounded-[36px] border border-slate-100 shadow-sm flex items-center justify-between active:scale-[0.98] transition-all cursor-pointer">
+                            <div>
+                                <p class="font-black text-slate-900">${r.storeName}</p>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase mt-1">Merchant Application</p>
+                            </div>
+                            <div class="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300">
+                                <i data-lucide="chevron-right"></i>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    onValue(ref(db, 'physical_print_requests'), (pSnap) => {
+                        const pList = Object.values(pSnap.val() || {}).filter(r => r.status === 'pending');
+                        html += pList.map(r => `
+                            <div onclick="master.showPrintDetail('${r.storeId}')" class="bg-indigo-600 p-6 rounded-[36px] text-white shadow-xl shadow-indigo-100 flex items-center justify-between active:scale-[0.98] transition-all cursor-pointer">
+                                <div>
+                                    <p class="font-black">${r.storeName}</p>
+                                    <p class="text-[10px] font-bold opacity-60 uppercase mt-1">Physical Print Request</p>
+                                </div>
+                                <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                                    <i data-lucide="printer"></i>
+                                </div>
+                            </div>
+                        `).join('');
+                        
+                        if(!html) target.innerHTML = '<p class="text-center py-20 text-slate-400 font-black uppercase text-[10px] tracking-widest opacity-40">Clean Inbox</p>';
+                        else target.innerHTML = html;
+                        lucide.createIcons();
+                    });
+                });
+                onValue(ref(db, 'stores'), (snap) => {
+                    document.getElementById('master-stat-total').innerText = Object.keys(snap.val() || {}).length;
+                });
+            },
+            showDetail: async (uid) => {
+                const snap = await get(ref(db, `merchant_requests/${uid}`));
+                if(!snap.exists()) return;
+                const r = snap.val();
+                const content = document.getElementById('master-request-detail-content');
+                content.innerHTML = `
+                    <div class="bg-slate-50 p-6 rounded-[32px] border border-slate-100 space-y-4">
+                        <div>
+                            <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Business Name</p>
+                            <p class="font-black text-slate-900 text-lg">${r.storeName}</p>
+                        </div>
+                        <div>
+                            <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Applicant Name</p>
+                            <p class="font-bold text-slate-700">${r.displayName}</p>
+                        </div>
+                        <div>
+                            <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Applicant Email</p>
+                            <p class="font-black text-indigo-600">${r.email}</p>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('btn-master-approve').onclick = () => { buttonToggleLoading('btn-master-approve', true); master.approve(r.uid, r.storeName); };
+                document.getElementById('btn-master-reject').onclick = () => { buttonToggleLoading('btn-master-reject', true); master.reject(r.uid); };
+                document.getElementById('master-request-detail-overlay').classList.remove('hidden');
+            },
+            showPrintDetail: async (sid) => {
+                const requestSnap = await get(ref(db, `physical_print_requests/${sid}`));
+                if(!requestSnap.exists()) return;
+                const r = requestSnap.val();
+
+                const storeSnap = await get(ref(db, `stores/${sid}`));
+                const latestConfig = storeSnap.exists() ? storeSnap.val() : r.config;
+
+                const overlay = document.getElementById('master-print-detail-overlay');
+                const info = document.getElementById('master-print-info');
+                const preview = document.getElementById('master-print-design-preview');
+                
+                const bColor = latestConfig.color || '#6366f1';
+                const sColor = latestConfig.secondaryColor || '#f43f5e';
+                const stColor = latestConfig.stampColor || bColor;
+                const stBg = latestConfig.stampBgColor || '#ffffff';
+
+                const link = `${window.location.origin}${window.location.pathname}?store=${r.storeId}&type=static`;
+                const qr = qrcode(0, 'H'); 
+                qr.addData(link); qr.make();
+                const qrHtml = qr.createImgTag(9, 10);
+
+                // OPTIMIZED POSTER (A4: 800x1120px)
+                preview.innerHTML = `
+                    <div id="print-gen-target" style="width: 800px; height: 1120px; background: #ffffff; padding: 60px 80px; display: flex; flex-direction: column; align-items: center; border: 40px solid #f8fafc; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; position: relative; overflow: hidden; text-align: center;">
+                        
+                        <!-- Header (SHRUNK) -->
+                        <div style="margin-bottom: 40px; width: 100%;">
+                            <div style="width: 80px; height: 80px; background: #0f172a; border-radius: 28px; display: flex; align-items: center; justify-content: center; margin: 0 auto 25px auto; transform: rotate(-6deg); box-shadow: 0 20px 40px -10px rgba(0,0,0,0.25);">
+                                <i data-lucide="sparkles" style="color: #ffffff; width: 40px; height: 40px;"></i>
+                            </div>
+                            <h1 style="font-size: 42px; font-weight: 900; color: #0f172a; margin: 0; letter-spacing: -2px; line-height: 1; text-transform: uppercase;">LOYALTY PROGRAM</h1>
+                            <div style="width: 60px; height: 6px; background: ${bColor}; border-radius: 10px; margin: 15px auto 0 auto;"></div>
+                        </div>
+
+                        <!-- Card (100% SCALE) -->
+                        <div style="width: 100%; margin-bottom: 40px; padding: 0 40px;">
+                            <p style="font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 5px; margin-bottom: 25px;">YOUR DIGITAL REWARDS CARD</p>
+                            
+                            <div style="width: 100%; aspect-ratio: 1.6 / 1; border-radius: 40px; background: linear-gradient(135deg, ${bColor}, ${sColor}); color: white; padding: 35px 40px; display: flex; flex-direction: column; text-align: left; box-shadow: 0 40px 80px -15px rgba(0,0,0,0.3); position: relative; overflow: hidden; box-sizing: border-box;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                                    <div style="display: flex; align-items: center; gap: 20px;">
+                                        <div style="width: 60px; height: 60px; border-radius: 20px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid rgba(255,255,255,0.3);">
+                                            ${latestConfig.logoUrl ? `<img src="${latestConfig.logoUrl}" style="width: 100%; height: 100%; object-fit: cover;">` : `<i data-lucide="store" style="width: 30px; height: 30px;"></i>`}
+                                        </div>
+                                        <h3 style="font-size: 22px; font-weight: 900; margin: 0; letter-spacing: -0.5px;">${latestConfig.name || r.storeName}</h3>
+                                    </div>
+                                    <div style="width: 45px; height: 45px; border-radius: 18px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center;"><i data-lucide="info" style="width: 22px; height: 22px;"></i></div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-top: auto;">
+                                    ${Array(latestConfig.maxStamps || 9).fill(0).map((_, i) => `
+                                        <div style="aspect-ratio: 1; border-radius: 50%; background: ${i === 0 ? `radial-gradient(circle at 0% -50%, #fff -60%, ${stBg} 100%)` : 'rgba(255,255,255,0.15)'}; border: ${i === 0 ? 'none' : '2px dashed rgba(255,255,255,0.3)'}; display: flex; align-items: center; justify-content: center; box-shadow: ${i === 0 ? '0 8px 20px rgba(0,0,0,0.2)' : 'none'};">
+                                            <i data-lucide="${latestConfig.stampIcon || 'award'}" style="width: 60%; height: 60%; color: ${i === 0 ? stColor : 'rgba(255,255,255,0.15)'}; opacity: 1;"></i>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Scan Section (BOTTOM) -->
+                        <div style="width: 100%; margin-top: auto; background: #f8fafc; padding: 70px 50px; border-radius: 80px; border: 4px solid #f1f5f9; position: relative; box-sizing: border-box;">
+                            <div style="position: absolute; top: -30px; left: 50%; transform: translateX(-50%); background: #0f172a; color: #ffffff; padding: 15px 45px; border-radius: 100px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 4px; box-shadow: 0 15px 30px rgba(0,0,0,0.2);">
+                                SCAN TO START
+                            </div>
+                            
+                            <div id="print-qr-target" style="background: #ffffff; padding: 30px; border-radius: 50px; display: inline-block; margin-bottom: 35px; border: 2px solid #e2e8f0; box-shadow: 0 15px 30px rgba(0,0,0,0.05); min-width: 200px;">
+                                ${qrHtml}
+                            </div>
+                            
+                            <h2 style="font-size: 34px; font-weight: 900; color: #0f172a; margin: 0 0 10px 0; letter-spacing: -1px;">${latestConfig.name || r.storeName}</h2>
+                            <p style="font-size: 16px; font-weight: 800; color: ${bColor}; margin: 0; text-transform: uppercase; letter-spacing: 2px;">Claim Your First Stamp Today!</p>
+                        </div>
+
+                        <!-- Footer -->
+                        <div style="margin-top: 50px; width: 100%;">
+                            <p style="font-size: 10px; font-weight: 800; color: #cbd5e1; text-transform: uppercase; letter-spacing: 4px; margin-bottom: 15px;">NO DOWNLOADS • SECURE • FAST</p>
+                            <div style="display: flex; align-items: center; gap: 15px; justify-content: center;">
+                                <div style="width: 30px; height: 1px; background: #e2e8f0;"></div>
+                                <p style="font-size: 13px; font-weight: 700; color: #94a3b8; margin: 0;">Powered by <span style="color: #0f172a; font-weight: 900;">Stamply</span></p>
+                                <div style="width: 30px; height: 1px; background: #e2e8f0;"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                setTimeout(() => {
+                    lucide.createIcons();
+                }, 100);
+
+                info.innerHTML = `
+                    <div class="bg-indigo-600 p-7 rounded-[40px] text-white shadow-xl shadow-indigo-100 mb-4">
+                        <p class="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">Merchant Verification</p>
+                        <h3 class="text-lg font-black mb-1">${r.requestedBy}</h3>
+                        <p class="text-xs font-bold opacity-80">${r.email}</p>
+                    </div>
+                    
+                    <button onclick="master.downloadDesign('${(latestConfig.name || r.storeName).replace(/'/g, "\\'")}')" class="w-full bg-[#0f172a] text-white py-8 rounded-[40px] text-sm font-black uppercase tracking-[0.3em] flex items-center justify-center gap-5 shadow-2xl active:scale-95 transition-all mt-4 mb-10">
+                        <i data-lucide="download-cloud" style="width: 28px; height: 28px;"></i> DOWNLOAD PRINT
+                    </button>
+                `;
+
+                document.getElementById('btn-master-print-approve').onclick = async () => {
+                    await update(ref(db, `physical_print_requests/${sid}`), { status: 'approved' });
+                    showToast("Order Approved", "check");
+                    overlay.classList.add('hidden');
+                };
+                document.getElementById('btn-master-print-reject').onclick = async () => {
+                    await remove(ref(db, `physical_print_requests/${sid}`));
+                    showToast("Order Rejected & Deleted", "x");
+                    overlay.classList.add('hidden');
+                };
+                
+                overlay.classList.remove('hidden');
+                lucide.createIcons();
+            },
+            downloadDesign: (storeName) => {
+                const injectFullScreenStyles = () => {
+                    const styleId = 'full-screen-preview-style';
+                    if (document.getElementById(styleId)) return;
+                    const css = `
+                        #master-print-design-preview > * {
+                            position: fixed !important;
+                            top: 0 !important;
+                            left: 0 !important;
+                            width: 100vw !important;
+                            height: 100vh !important;
+                            z-index: 99999 !important;
+                            background-color: white !important;
+                            overflow: none !important;
+                            margin: 0 !important;
+                            padding: 20px !important;
+                        }
+                    `;
+                    const style = document.createElement('style');
+                    style.id = styleId;
+                    style.type = 'text/css';
+                    style.appendChild(document.createTextNode(css));
+                    document.head.appendChild(style);
+                };
+                injectFullScreenStyles();
+
+                const target = document.getElementById('print-gen-target');
+                if(!target) return;
+                
+                showToast("Baking Premium High-Res Image...", "sparkles");
+                
+                html2canvas(target, {
+                    scale: 3, 
+                    backgroundColor: "#ffffff",
+                    useCORS: true,
+                    allowTaint: false,
+                    onclone: (clonedDoc) => {
+                        const tc = clonedDoc.getElementById('print-gen-target');
+                        tc.style.border = '40px solid #f8fafc';
+                        
+                        // Force Lucide icons to render with explicit strokes for capture
+                        clonedDoc.querySelectorAll('svg.lucide').forEach(svg => {
+                            svg.style.strokeWidth = "3px";
+                            const color = svg.getAttribute('style')?.match(/color:\s*([^;]+)/)?.[1] || svg.getAttribute('color') || '#ffffff';
+                            svg.style.stroke = color;
+                            // Ensure internal paths inherit the stroke
+                            svg.querySelectorAll('path, circle, line, polyline, rect').forEach(p => {
+                                p.style.stroke = color;
+                                p.style.strokeWidth = "3px";
+                            });
+                        });
+                    }
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = `Stamply_Official_Poster_${storeName.replace(/\s+/g, '_')}.png`;
+                    link.href = canvas.toDataURL('image/png', 1.0);
+                    link.click();
+                    showToast("Poster Exported!", "check");
+                }).catch(err => {
+                    console.error("Poster Generation Error:", err);
+                    showToast("Export Failed", "x");
+                });
+            },
+            approve: async (uid, storeName) => {
+                if(currentUser.email !== MASTER_ADMIN_EMAIL) return showToast("Master Only", "alert-circle");
+                try {
+                    await update(ref(db, `users/${uid}`), { role: 'admin' });
+                    await set(ref(db, `stores/${uid}`), { ...STAMP_DEFAULTS, name: storeName });
+                    await update(ref(db, `merchant_requests/${uid}`), { status: 'approved' });
+                    showToast("Merchant Approved!", "check");
+                    document.getElementById('master-request-detail-overlay').classList.add('hidden');
+                } catch (e) { showToast(e.message, "x"); }
+                finally { buttonToggleLoading('btn-master-approve', false); }
+            },
+            reject: async (uid) => {
+                if(currentUser.email !== MASTER_ADMIN_EMAIL) return showToast("Master Only", "alert-circle");
+                try {
+                    await update(ref(db, `merchant_requests/${uid}`), { status: 'rejected' });
+                    showToast("Request Rejected", "x");
+                    document.getElementById('master-request-detail-overlay').classList.add('hidden');
+                } catch (e) { showToast(e.message, "x"); }
+                finally { buttonToggleLoading('btn-master-reject', false); }
+            }
+        };
+        window.master = master;
+
+        const getTimeAgo = (ts) => {
+            if(!ts) return 'New Member';
+            const diff = Date.now() - ts;
+            const hours = Math.floor(diff / 3600000);
+            if(hours < 1) return 'Just now';
+            if(hours < 24) return hours + 'h ago';
+            return Math.floor(hours / 24) + 'd ago';
+        };
+
+        window.router = router;
+        let toastTimeout;
+        window.showToast = (msg, icon = 'info') => {
+            const t = document.getElementById('toast'), i = document.getElementById('toast-icon');
+            document.getElementById('toast-text').innerText = msg;
+            i.setAttribute('data-lucide', icon); lucide.createIcons();
+            t.classList.add('show'); 
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => t.classList.remove('show'), 3500);
+        };
+
+        window.customConfirm = (title, msg, btnText, btnColor, icon, callback) => {
+            const overlay = document.getElementById('confirm-overlay'), t = document.getElementById('confirm-title'), m = document.getElementById('confirm-msg'), b = document.getElementById('btn-confirm-action'), i = document.getElementById('confirm-icon'), ibg = document.getElementById('confirm-icon-bg');
+            t.innerText = title; m.innerText = msg; b.innerText = btnText;
+            const colorBase = btnColor.replace('bg-', '');
+            b.setAttribute('class', `py-5 text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg ${btnColor}`);
+            ibg.setAttribute('class', `w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 bg-${colorBase.split('-')[0]}-50`);
+            i.setAttribute('data-lucide', icon); 
+            i.setAttribute('class', `w-10 h-10 text-${colorBase}`);
+            lucide.createIcons();
+            overlay.classList.remove('hidden');
+            b.onclick = () => { overlay.classList.add('hidden'); callback(); };
+            document.getElementById('btn-confirm-cancel').onclick = () => overlay.classList.add('hidden');
+        };
+
+        window.showHistoryDetail = async (tid, storeId) => {
+            const snap = await get(ref(db, `pending_stamps/${tid}`));
+            if(!snap.exists()) return showToast("Transaction not found", "alert-circle");
+            const h = snap.val();
+            const content = document.getElementById('history-detail-content');
+            
+            const formatDate = (ts) => ts ? new Date(ts).toLocaleString() : 'N/A';
+            const isClaim = h.type === 'reward_claim';
+            
+            let statusHtml = '';
+            if(h.status==='claimed') statusHtml = '<div class="flex items-center gap-2 text-emerald-600 font-black uppercase text-[10px] tracking-widest bg-emerald-50 px-3 py-1.5 rounded-full"><i data-lucide="check-circle" class="w-3 h-3"></i> Approved</div>';
+            else if(h.status==='rejected') statusHtml = '<div class="flex items-center gap-2 text-slate-400 font-black uppercase text-[10px] tracking-widest bg-slate-50 px-3 py-1.5 rounded-full"><i data-lucide="x-circle" class="w-3 h-3"></i> Rejected</div>';
+            else if(h.status==='voided') statusHtml = '<div class="flex items-center gap-2 text-rose-600 font-black uppercase text-[10px] tracking-widest bg-rose-50 px-3 py-1.5 rounded-full"><i data-lucide="trash-2" class="w-3 h-3"></i> Voided</div>';
+            else statusHtml = '<div class="flex items-center gap-2 text-indigo-600 font-black uppercase text-[10px] tracking-widest bg-indigo-50 px-3 py-1.5 rounded-full"><i data-lucide="clock" class="w-3 h-3"></i> Pending Approval</div>';
+
+            content.innerHTML = `
+                <div class="flex justify-between items-center bg-slate-50 p-5 rounded-3xl border border-slate-100">
+                    <div>
+                        <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</p>
+                        ${statusHtml}
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Type</p>
+                        <p class="font-black text-slate-900">${isClaim ? 'Reward' : 'Stamp'}</p>
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <div class="flex justify-between py-2 border-b border-slate-50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Requested By</span>
+                        <span class="text-xs font-black text-slate-900">${h.claimerName || 'Customer'}</span>
+                    </div>
+                    <div class="flex justify-between py-2 border-b border-slate-50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Request Time</span>
+                        <span class="text-xs font-black text-slate-900">${formatDate(h.createdAt)}</span>
+                    </div>
+                    ${h.claimedAt ? `
+                    <div class="flex justify-between py-2 border-b border-slate-50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Approved By</span>
+                        <span class="text-xs font-black text-indigo-600">${h.approvedByName || 'System'}</span>
+                    </div>
+                    <div class="flex justify-between py-2 border-b border-slate-50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Approved Time</span>
+                        <span class="text-xs font-black text-slate-900">${formatDate(h.claimedAt)}</span>
+                    </div>
+                    ` : ''}
+                    ${h.rejectedAt ? `
+                    <div class="flex justify-between py-2 border-b border-slate-50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rejected By</span>
+                        <span class="text-xs font-black text-rose-500">${h.rejectedByName || 'Staff'}</span>
+                    </div>
+                    <div class="flex justify-between py-2 border-b border-slate-50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rejected Time</span>
+                        <span class="text-xs font-black text-slate-900">${formatDate(h.rejectedAt)}</span>
+                    </div>
+                    ` : ''}
+                    ${h.voidedAt ? `
+                    <div class="flex justify-between py-2 border-b border-slate-50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Voided By</span>
+                        <span class="text-xs font-black text-rose-500">${h.voidedByName || 'Staff'}</span>
+                    </div>
+                    <div class="flex justify-between py-2 border-b border-slate-50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Voided Time</span>
+                        <span class="text-xs font-black text-slate-900">${formatDate(h.voidedAt)}</span>
+                    </div>
+                    ` : ''}
+                </div>
+                <div class="pt-4 text-center">
+                    <p class="text-[8px] font-bold text-slate-300 uppercase tracking-[0.2em] mb-1">Transaction ID</p>
+                    <p class="text-[8px] font-mono text-slate-200">${tid}</p>
+                </div>
+            `;
+            lucide.createIcons();
+            document.getElementById('history-detail-overlay').classList.remove('hidden');
+        };
+
+        window.showLegal = (type) => {
+            const overlay = document.getElementById('legal-overlay');
+            const title = document.getElementById('legal-title');
+            const content = document.getElementById('legal-content');
+            
+            if(type === 'privacy') {
+                title.innerText = "Privacy Policy";
+                content.innerHTML = `
+                    <div>
+                        <p class="font-black text-slate-900 uppercase text-[10px] tracking-widest mb-2">1. Information We Collect</p>
+                        <p>We collect your name, email address, and profile picture via Google Sign-In to create your rewards account. We also track your stamp collections and transaction history with participating merchants.</p>
+                    </div>
+                    <div>
+                        <p class="font-black text-slate-900 uppercase text-[10px] tracking-widest mb-2">2. How We Use Data</p>
+                        <p>Your data is used strictly to manage your loyalty cards and rewards. Merchants only see your name and email when you scan their codes or join their program.</p>
+                    </div>
+                    <div>
+                        <p class="font-black text-slate-900 uppercase text-[10px] tracking-widest mb-2">3. Data Security</p>
+                        <p>We use Firebase (Google Cloud) to secure your data. We do not sell your personal information to third parties.</p>
+                    </div>
+                `;
+            } else {
+                title.innerText = "Terms of Service";
+                content.innerHTML = `
+                    <div>
+                        <p class="font-black text-slate-900 uppercase text-[10px] tracking-widest mb-2">1. Program Rules</p>
+                        <p>Stamps have no cash value. Rewards are subject to individual merchant availability and their specific store policies.</p>
+                    </div>
+                    <div>
+                        <p class="font-black text-slate-900 uppercase text-[10px] tracking-widest mb-2">2. Fair Use</p>
+                        <p>Any attempt to manipulate the stamp system, including using multiple accounts or unauthorized scanning, will result in immediate account termination.</p>
+                    </div>
+                    <div>
+                        <p class="font-black text-slate-900 uppercase text-[10px] tracking-widest mb-2">3. Limitation of Liability</p>
+                        <p>Stamply is a platform provider. We are not responsible for merchant fulfillment of rewards or business closures.</p>
+                    </div>
+                `;
+            }
+            overlay.classList.remove('hidden');
+            lucide.createIcons();
+        };
+
+        window.signOutProcess = () => { 
+            document.getElementById('view-splash').classList.add('active'); 
+            setTimeout(() => signOut(auth).then(() => {location.reload()}), 10); 
+        };
+
+        window.deleteAccountProcess = () => {
+            customConfirm(
+                "Delete Account?", 
+                "This will permanently erase your profile, all your stamps, and your transaction history. This action cannot be undone.",
+                "Delete Forever", 
+                "bg-rose-600", 
+                "trash-2", 
+                async () => {
+                    const user = auth.currentUser;
+                    if(!user) return;
+                    
+                    document.getElementById('global-loader').classList.remove('hidden');
+                    document.getElementById('loader-text').innerText = "Erasing Data...";
+                    
+                    try {
+                        // 1. Get all stores the user is a part of to clean up card data
+                        const myStoresSnap = await get(ref(db, `users/${user.uid}/my_stores`));
+                        if(myStoresSnap.exists()) {
+                            const stores = Object.keys(myStoresSnap.val());
+                            for(const sid of stores) {
+                                await remove(ref(db, `cards/${sid}/${user.uid}`));
+                            }
+                        }
+                        
+                        // 2. Remove user profile
+                        await remove(ref(db, `users/${user.uid}`));
+                        
+                        // 3. Delete Auth Account
+                        await deleteUser(user);
+                        
+                        showToast("Account Deleted", "check");
+                        location.reload();
+                    } catch (e) {
+                        console.error("Deletion Error:", e);
+                        if(e.code === 'auth/requires-recent-login') {
+                            showToast("Security: Please Sign Out and Sign In again to delete.", "alert-circle");
+                        } else {
+                            showToast("Deletion Failed: " + e.message, "x");
+                        }
+                    } finally {
+                        document.getElementById('global-loader').classList.add('hidden');
+                    }
+                }
+            );
+        };
+
+        // Network Status Handling
+        window.addEventListener('online', () => {
+            document.getElementById('offline-indicator').classList.add('hidden');
+            showToast("Back Online", "wifi");
+        });
+        window.addEventListener('offline', () => {
+            document.getElementById('offline-indicator').classList.remove('hidden');
+            showToast("Connection Lost", "wifi-off");
+        });
+
+        const admin = {
+            setTab: (tab) => {
+                document.getElementById('admin-tab-metrics').className = `flex-1 py-4 rounded-[22px] font-black text-[10px] uppercase tracking-widest transition-all ${tab==='metrics'?'bg-white shadow-sm':'text-slate-500'}`;
+                document.getElementById('admin-tab-customers').className = `flex-1 py-4 rounded-[22px] font-black text-[10px] uppercase transition-all ${tab==='customers'?'bg-white shadow-sm':'text-slate-500'}`;
+                document.getElementById('admin-content-metrics').classList.toggle('hidden', tab!=='metrics');
+                document.getElementById('admin-content-customers').classList.toggle('hidden', tab!=='customers');
+            },
+            init: () => {
+                onValue(ref(db, `cards/${currentStoreId}`), (snap) => {
+                    const custs = Object.values(snap.val()||{});
+                    document.getElementById('stat-customers').innerText = custs.length;
+                    
+                    // Top Customers (by stamps + history length as proxy for loyalty)
+                    const topCusts = [...custs].sort((a,b) => {
+                        const scoreA = (a.stamps || 0) + Object.keys(a.history || {}).length;
+                        const scoreB = (b.stamps || 0) + Object.keys(b.history || {}).length;
+                        return scoreB - scoreA;
+                    }).slice(0, 5);
+
+                    document.getElementById('admin-top-customers').innerHTML = topCusts.map((u, i) => `
+                        <div class="bg-white p-5 rounded-[28px] flex items-center justify-between border border-slate-50 shadow-sm">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-400 text-xs">${i+1}</div>
+                                <div>
+                                    <p class="font-black text-slate-900 text-sm">${u.claimerName || 'Customer'}</p>
+                                    <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Loyalty Score: ${(u.stamps || 0) + Object.keys(u.history || {}).length}</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-xs font-black text-indigo-600">${u.stamps} Stamps</p>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    document.getElementById('admin-customer-list').innerHTML = custs.map(u => `<div class="bg-white p-6 rounded-[32px] flex items-center justify-between border border-slate-50 shadow-sm"><div class="flex items-center gap-5"><div class="w-14 h-14 rounded-[22px] bg-indigo-50 flex items-center justify-center text-indigo-600 font-black">${u.claimerName?u.claimerName.charAt(0):'C'}</div><div><p class="font-black text-slate-900">${u.claimerName || 'Customer'}</p><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${u.stamps} Stamps</p></div></div><i data-lucide="chevron-right" class="text-slate-300"></i></div>`).join('');
+                    lucide.createIcons();
+                });
+
+                onValue(ref(db, 'pending_stamps'), (snap) => {
+                    const allStamps = Object.values(snap.val()||{}).filter(s => s.storeId === currentStoreId && s.status === 'claimed');
+                    const now = new Date();
+                    const todayStart = new Date().setHours(0,0,0,0);
+                    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+                    const todayCount = allStamps.filter(s => s.claimedAt >= todayStart).length;
+                    const monthCount = allStamps.filter(s => s.claimedAt >= monthStart).length;
+
+                    document.getElementById('stat-stamps-today').innerText = todayCount;
+                    document.getElementById('stat-stamps-month').innerText = monthCount;
+                });
+            },
+            showStaticQr: () => {
+                const overlay = document.getElementById('static-qr-overlay');
+                const qrCanvas = document.getElementById('static-qr-canvas');
+                const locText = document.getElementById('static-qr-location');
+                
+                const link = `${window.location.origin}${window.location.pathname}?store=${currentStoreId}&type=static`;
+                const qr = qrcode(0, 'M');
+                qr.addData(link); qr.make();
+                qrCanvas.innerHTML = qr.createImgTag(10);
+                
+                locText.innerText = storeConfig.location || "No location set";
+                renderCard(storeConfig, 'static-qr-preview-container', { stamps: 1 });
+                overlay.classList.remove('hidden');
+                lucide.createIcons();
+            },
+            requestPhysicalPrint: async () => {
+                const msg = `Hi Admin, I'd like to request a physical print for my store: ${storeConfig.name}.\nStore ID: ${currentStoreId}\nLocation: ${storeConfig.location || 'Not set'}`;
+                const url = `https://wa.me/60193701294?text=${encodeURIComponent(msg)}`;
+                window.open(url, '_blank');
+                
+                buttonToggleLoading('btn-request-physical', true);
+                try {
+                    await set(ref(db, `physical_print_requests/${currentStoreId}`), {
+                        storeId: currentStoreId,
+                        storeName: storeConfig.name,
+                        requestedBy: currentUser.displayName,
+                        email: currentUser.email,
+                        timestamp: serverTimestamp(),
+                        status: 'pending',
+                        config: storeConfig
+                    });
+                    showToast("Request Sent via WhatsApp", "check");
+                } catch (e) { showToast(e.message, "x"); }
+                finally { buttonToggleLoading('btn-request-physical', false); }
+            },
+            downloadCSV: async () => {
+                showToast("Generating CSV...", "download");
+                try {
+                    const snap = await get(ref(db, `cards/${currentStoreId}`));
+                    if(!snap.exists()) return showToast("No customers found", "alert-circle");
+                    
+                    const cards = snap.val();
+                    const uids = Object.keys(cards);
+                    
+                    // Fetch email and other profile info from users node for each card
+                    const rows = [["Name", "Email", "Stamps", "Last Activity"]];
+                    
+                    for(const uid of uids) {
+                        const card = cards[uid];
+                        const userSnap = await get(ref(db, `users/${uid}`));
+                        const user = userSnap.exists() ? userSnap.val() : {};
+                        
+                        rows.push([
+                            `"${user.displayName || card.claimerName || 'Unknown'}"`,
+                            `"${user.email || 'N/A'}"`,
+                            card.stamps || 0,
+                            card.lastStampAt ? new Date(card.lastStampAt).toLocaleString() : 'Never'
+                        ]);
+                    }
+                    
+                    const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement("a");
+                    link.setAttribute("href", encodedUri);
+                    link.setAttribute("download", `Stamply_Customers_${storeConfig.name.replace(/\s+/g, '_')}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    showToast("Export Complete!", "check");
+                } catch (e) {
+                    console.error("CSV Export Error:", e);
+                    showToast("Export Failed", "x");
+                }
+            }
+        };
+        window.admin = admin;
+
+        const staff = {
+            setTab: (tab) => {
+                document.getElementById('staff-tab-qr').className = `flex-1 py-4 rounded-[22px] font-black text-[10px] uppercase transition-all ${tab==='qr'?'bg-white shadow-sm':'text-slate-500'}`;
+                document.getElementById('staff-tab-approvals').className = `flex-1 py-4 rounded-[22px] font-black text-[10px] uppercase transition-all ${tab==='approvals'?'bg-white shadow-sm':'text-slate-500'}`;
+                document.getElementById('staff-content-qr').classList.toggle('hidden', tab!=='qr');
+                document.getElementById('staff-content-approvals').classList.toggle('hidden', tab!=='approvals');
+                if(tab==='approvals') staff.loadApprovals();
+            },
+            loadApprovals: () => {
+                const q = query(ref(db, 'pending_stamps'), limitToLast(50));
+                onValue(q, (snap) => {
+                    const list = Object.values(snap.val()||{}).filter(s => s.storeId === currentStoreId).sort((a,b) => (b.claimedAt||b.createdAt) - (a.claimedAt||a.createdAt));
+                    const target = document.getElementById('staff-pending-list');
+                    if(list.length===0) target.innerHTML = '<p class="text-center py-24 text-slate-400 font-black uppercase text-[10px] tracking-[0.3em] opacity-40">No activity yet</p>';
+                    else target.innerHTML = list.map(s => {
+                        const isClaim = s.type === 'reward_claim';
+                        const isVoided = s.status === 'voided';
+                        const isRejected = s.status === 'rejected';
+                        const isPending = s.status === 'pending_approval';
+                        const isClaimed = s.status === 'claimed';
+
+                        let statusBadge = '';
+                        if(isVoided) statusBadge = '<span class="text-[8px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-black uppercase ml-2">VOIDED</span>';
+                        if(isRejected) statusBadge = '<span class="text-[8px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-black uppercase ml-2">REJECTED</span>';
+                        if(isClaimed) statusBadge = '<span class="text-[8px] bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full font-black uppercase ml-2">APPROVED</span>';
+
+                        return `<div onclick="showHistoryDetail('${s.tokenId}', '${s.storeId}')" class="bg-white p-7 rounded-[40px] flex items-center justify-between shadow-2xl border border-slate-100 active:scale-[0.98] transition-all ${(isVoided || isRejected)?'opacity-40 grayscale':''}">
+                            <div class="flex items-center gap-5">
+                                <div class="w-14 h-14 ${isClaim?'bg-rose-50':'bg-indigo-50'} rounded-[22px] flex items-center justify-center">
+                                    <i data-lucide="${isClaim?'gift':'user'}" class="${isClaim?'text-rose-600':'text-indigo-600'}"></i>
+                                </div>
+                                <div>
+                                    <p class="font-black text-slate-900">${s.claimerName}${statusBadge}</p>
+                                    <p class="text-[10px] font-black text-slate-400 tracking-widest uppercase mt-1">${isClaim?'Reward Claim':'Visit Stamp'}</p>
+                                </div>
+                            </div>
+                            <div class="flex gap-2" onclick="event.stopPropagation()">
+                                ${isPending ? `
+                                    <button onclick="staff.approve('${s.tokenId}')" class="w-16 h-16 bg-emerald-500 text-white rounded-[24px] flex items-center justify-center shadow-lg active:scale-90 transition-all"><i data-lucide="check" class="w-7 h-7"></i></button>
+                                    <button onclick="staff.reject('${s.tokenId}')" class="w-16 h-16 bg-slate-100 text-slate-400 rounded-[24px] flex items-center justify-center active:scale-90 transition-all"><i data-lucide="x" class="w-7 h-7"></i></button>
+                                ` : ''}
+                                ${(isClaimed && !isClaim) ? `<button onclick="staff.voidStamp('${s.tokenId}')" class="w-16 h-16 bg-rose-50 text-rose-600 rounded-[24px] flex items-center justify-center border border-rose-100 active:scale-90 transition-all"><i data-lucide="trash-2" class="w-7 h-7"></i></button>` : ''}
+                            </div>
+                        </div>`;
+                    }).join('');
+                    lucide.createIcons();
+                });
+            },
+            approve: async (tid) => {
+                const tRef = ref(db, `pending_stamps/${tid}`);
+                const snap = await get(tRef);
+                if (!snap.exists() || snap.val().status !== 'pending_approval') return;
+                const d = snap.val();
+                
+                const updateData = { status: 'claimed', claimedAt: serverTimestamp(), approvedBy: currentUser.uid, approvedByName: currentUser.displayName };
+                
+                try {
+                    // 1. Mark stamp as claimed (prevents double approval)
+                    await update(tRef, updateData);
+                    
+                    // 2. Atomic card update
+                    const cRef = ref(db, `cards/${d.storeId}/${d.claimerId}`);
+                    await runTransaction(cRef, (currentData) => {
+                        if (!currentData) currentData = { stamps: 0, points: 0, history: {}, claimerName: d.claimerName };
+                        if (d.type === 'reward_claim') {
+                            currentData.stamps = 0;
+                        } else {
+                            currentData.stamps = (currentData.stamps || 0) + 1;
+                        }
+                        currentData.lastStampAt = serverTimestamp();
+                        currentData.claimerName = d.claimerName;
+                        return currentData;
+                    });
+                    
+                    // 3. Record in history
+                    await set(ref(db, `cards/${d.storeId}/${d.claimerId}/history/${tid}`), { ...d, ...updateData });
+                    showToast("Confirmed!", "check");
+                } catch (e) {
+                    console.error("Approval failed:", e);
+                    showToast("Approval Failed", "alert-circle");
+                }
+            },
+            reject: async (tid) => {
+                customConfirm("Reject Stamp?", "This request will be dismissed and the customer won't receive a stamp.", "Reject Now", "bg-rose-500", "x-circle", async () => {
+                    await update(ref(db, `pending_stamps/${tid}`), { status: 'rejected', rejectedAt: serverTimestamp(), rejectedBy: currentUser.uid, rejectedByName: currentUser.displayName });
+                    showToast("Rejected", "x");
+                });
+            },
+            voidStamp: async (tid) => {
+                const snap = await get(ref(db, `pending_stamps/${tid}`)); if(!snap.exists()) return; const d = snap.val();
+                if(d.status === 'voided') return;
+                customConfirm("Void this stamp?", "The customer's stamp count will decrease by 1. This action is irreversible.", "Void Stamp", "bg-rose-600", "trash-2", async () => {
+                    const voidData = { status: 'voided', voidedAt: serverTimestamp(), voidedBy: currentUser.uid, voidedByName: currentUser.displayName };
+                    try {
+                        await update(ref(db, `pending_stamps/${tid}`), voidData);
+                        const cRef = ref(db, `cards/${d.storeId}/${d.claimerId}`);
+                        await runTransaction(cRef, (currentData) => {
+                            if (currentData && currentData.stamps > 0) {
+                                currentData.stamps -= 1;
+                            }
+                            return currentData;
+                        });
+                        await remove(ref(db, `cards/${d.storeId}/${d.claimerId}/history/${tid}`));
+                        showToast("Stamp Voided!", "trash-2");
+                    } catch (e) {
+                        showToast("Void Failed", "x");
+                    }
+                });
+            }
+        };
+        window.staff = staff;
+
+        const customer = {
+            claimReward: async () => {
+                try {
+                    document.getElementById('global-loader').classList.remove('hidden');
+                    const tid = push(child(ref(db), 'pending_stamps')).key;
+                    const now = Date.now();
+                    const req = { tokenId: tid, storeId: currentStoreId, claimerId: currentUser.uid, claimerName: currentUser.displayName, type: 'reward_claim', status: 'pending_approval', createdAt: now };
+                    if(currentRole === 'admin' || currentRole === 'staff') {
+                        req.status = 'claimed'; req.claimedAt = now; req.approvedBy = currentUser.uid; req.approvedByName = currentUser.displayName;
+                        await set(ref(db, `pending_stamps/${tid}`), req);
+                        const cRef = ref(db, `cards/${currentStoreId}/${currentUser.uid}`);
+                        await update(cRef, { stamps: 0, lastStampAt: now, claimerName: currentUser.displayName });
+                        await set(ref(db, `cards/${currentStoreId}/${currentUser.uid}/history/${tid}`), req);
+                        showToast("Self-Claim Applied!", "gift");
+                    } else {
+                        await set(ref(db, `pending_stamps/${tid}`), req);
+                        showToast("Claim Sent!", "gift");
+                    }
+                } catch (e) { showToast(e.message, "x"); } finally { document.getElementById('global-loader').classList.add('hidden'); }
+            }
+        };
+        window.customer = customer;
+
+        window.staffQrInterval = null;
+        window.renderStaffStation = function(force = false) {
+            if(window.staffQrInterval) clearInterval(window.staffQrInterval);
+            const timerText = document.getElementById('qr-timer');
+            const timerBar = document.getElementById('qr-timer-bar');
+            
+            const gen = (isForced = false) => {
+                const now = Date.now();
+                const token = isForced ? `f_${now}_${Math.random().toString(36).substr(2, 5)}` : Math.floor(now / 60000); 
+                const link = `${window.location.origin}${window.location.pathname}?store=${currentStoreId}&type=dynamic&t=${token}`;
+                const qr = qrcode(0, 'M');
+                qr.addData(link); qr.make();
+                const container = document.getElementById('qr-container');
+                if(container) container.innerHTML = qr.createImgTag(10);
+                
+                const btnCopy = document.getElementById('btn-copy-link');
+                if(btnCopy) {
+                    btnCopy.onclick = () => {
+                        const textarea = document.createElement('textarea');
+                        textarea.value = link; document.body.appendChild(textarea); textarea.select();
+                        try { document.execCommand('copy'); showToast("Copied!", "copy"); } catch (err) { alert("Link: " + link); }
+                        document.body.removeChild(textarea);
+                    };
+                }
+
+                if(timerText) timerText.innerText = "Refreshing in 60s";
+                if(timerBar) {
+                    timerBar.style.transition = 'none';
+                    timerBar.style.width = '100%';
+                    setTimeout(() => {
+                        timerBar.style.transition = 'width 60s linear';
+                        timerBar.style.width = '0%';
+                    }, 50);
+                }
+            };
+
+            let timeLeft = 60;
+            const updateTimer = () => {
+                timeLeft--;
+                if(timerText) timerText.innerText = `Refreshing in ${timeLeft}s`;
+                if(timeLeft <= 0) { timeLeft = 60; gen(); }
+            };
+
+            gen(force);
+            window.staffQrInterval = setInterval(updateTimer, 1000);
+        }
+
+        let activePicker = 'primary';
+        let colorPickerWheel = null;
+        const settings = {
+            init: () => {
+                const pCircle = document.getElementById('btn-pick-primary'), sCircle = document.getElementById('btn-pick-secondary'), stCircle = document.getElementById('btn-pick-stamp'), stBgCircle = document.getElementById('btn-pick-stamp-bg');
+                const overlay = document.getElementById('color-picker-overlay'), hex = document.getElementById('set-color-hex');
+
+                if(!colorPickerWheel) {
+                    colorPickerWheel = new iro.ColorPicker("#iro-picker", { width: 250, color: storeConfig.color, borderWeight: 2, borderColor: "#fff" });
+                    colorPickerWheel.on('color:change', (color) => {
+                        const v = color.hexString; hex.value = v;
+                        if(activePicker==='primary') { storeConfig.color=v; pCircle.style.background=v; }
+                        else if(activePicker==='secondary') { storeConfig.secondaryColor=v; sCircle.style.background=v; }
+                        else if(activePicker==='stamp') { storeConfig.stampColor=v; stCircle.style.background=v; }
+                        else if(activePicker==='stamp-bg') { storeConfig.stampBgColor=v; stBgCircle.style.background=v; }
+                        settings.live();
+                    });
+                }
+
+                pCircle.onclick = () => { activePicker = 'primary'; updatePickerUI(); overlay.classList.remove('hidden'); };
+                sCircle.onclick = () => { activePicker = 'secondary'; updatePickerUI(); overlay.classList.remove('hidden'); };
+                stCircle.onclick = () => { activePicker = 'stamp'; updatePickerUI(); overlay.classList.remove('hidden'); };
+                stBgCircle.onclick = () => { activePicker = 'stamp-bg'; updatePickerUI(); overlay.classList.remove('hidden'); };
+
+                hex.oninput = (e) => { const v = e.target.value; if(v.length===7) colorPickerWheel.color.set(v); };
+
+                document.querySelectorAll('#icon-selector .icon-btn').forEach(b => {
+                    b.onclick = () => { document.querySelectorAll('#icon-selector .icon-btn').forEach(x => x.classList.remove('active')); b.classList.add('active'); storeConfig.stampIcon = b.dataset.icon; settings.live(); };
+                    if(b.dataset.icon === storeConfig.stampIcon) b.classList.add('active');
+                });
+
+                document.getElementById('set-stamp-text').value = storeConfig.stampText;
+                document.getElementById('set-stamp-text').oninput = (e) => { storeConfig.stampText = e.target.value; settings.live(); };
+                document.getElementById('set-stamp-font').value = storeConfig.stampFont;
+                document.getElementById('set-stamp-font').onchange = (e) => { storeConfig.stampFont = e.target.value; settings.live(); };
+                document.getElementById('set-store-name').value = storeConfig.name;
+                document.getElementById('set-store-name').oninput = (e) => { storeConfig.name = e.target.value; settings.live(); };
+                document.getElementById('set-store-link').value = storeConfig.location || '';
+                document.getElementById('set-store-link').oninput = (e) => { storeConfig.location = e.target.value; };
+                document.getElementById('set-reward-desc').value = storeConfig.reward || '';
+                document.getElementById('set-reward-desc').oninput = (e) => { storeConfig.reward = e.target.value; };
+
+                if(storeConfig.logoUrl) { document.getElementById('logo-preview-img').src = storeConfig.logoUrl; document.getElementById('logo-preview-img').classList.remove('hidden'); document.getElementById('logo-placeholder').classList.add('hidden'); }
+                settings.renderStaff(); settings.live();
+            },
+            setPreset: (c) => { if(colorPickerWheel) colorPickerWheel.color.set(c); },
+            live: () => {
+                document.getElementById('btn-pick-primary').style.background = storeConfig.color;
+                document.getElementById('btn-pick-secondary').style.background = storeConfig.secondaryColor;
+                document.getElementById('btn-pick-stamp').style.background = storeConfig.stampColor || storeConfig.color;
+                document.getElementById('btn-pick-stamp-bg').style.background = storeConfig.stampBgColor || '#ffffff';
+                document.documentElement.style.setProperty('--primary', storeConfig.color);
+                document.documentElement.style.setProperty('--secondary', storeConfig.secondaryColor);
+                document.documentElement.style.setProperty('--stamp-color', storeConfig.stampColor || storeConfig.color);
+                document.documentElement.style.setProperty('--stamp-bg', storeConfig.stampBgColor || '#ffffff');
+                document.documentElement.style.setProperty('--stamp-font', storeConfig.stampFont);
+                renderCard(storeConfig, 'preview-card-container', { stamps: 2, points: 250 });
+            },
+            addStaff: async () => {
+                const n = document.getElementById('add-staff-name'), e = document.getElementById('add-staff-email');
+                if(!n.value || !e.value) return showToast("Enter Name and Email", "alert-circle");
+                const email = e.value.toLowerCase().trim();
+                if(!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) return showToast("Invalid Email Format", "alert-circle");
+                const id = btoa(email).replace(/=/g, '');
+                if(!storeConfig.staff_list) storeConfig.staff_list = {};
+                storeConfig.staff_list[id] = { name: n.value, email: email };
+                await set(ref(db, `staff_invites/${id}`), { storeId: currentStoreId, name: n.value });
+                n.value = ''; e.value = ''; settings.renderStaff(); 
+                document.getElementById('staff-register-overlay').classList.add('hidden');
+                showToast("Staff added. Save to apply.", "check");
+            },
+            removeStaff: (id) => { 
+                const s = storeConfig.staff_list[id];
+                if(!s) return;
+                customConfirm("Remove Staff?", `Are you sure you want to revoke access for ${s.name}?`, "Remove Now", "bg-rose-600", "user-minus", async () => {
+                    delete storeConfig.staff_list[id]; 
+                    await remove(ref(db, `staff_invites/${id}`));
+                    settings.renderStaff(); 
+                    showToast("Staff access revoked", "trash-2");
+                });
+            },
+            renderStaff: () => {
+                const list = document.getElementById('admin-staff-list');
+                const staffArr = Object.entries(storeConfig.staff_list || {});
+                if(staffArr.length === 0) list.innerHTML = '<p class="text-center py-4 text-slate-400 text-[10px] font-bold uppercase tracking-widest">No staff members</p>';
+                else list.innerHTML = staffArr.map(([id, s]) => `<div class="bg-slate-50 p-4 rounded-2xl flex items-center justify-between"><div><p class="font-black text-slate-900 text-xs">${s.name}</p><p class="text-[9px] text-slate-400 font-bold">${s.email}</p></div><button onclick="settings.removeStaff('${id}')" class="text-rose-500 hover:text-rose-700 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('');
+                lucide.createIcons();
+            }
+        };
+        window.settings = settings;
+        function updatePickerUI() { 
+            let c = storeConfig.color;
+            if(activePicker==='secondary') c = storeConfig.secondaryColor;
+            else if(activePicker==='stamp') c = storeConfig.stampColor || storeConfig.color;
+            else if(activePicker==='stamp-bg') c = storeConfig.stampBgColor || '#ffffff';
+            if(colorPickerWheel) { colorPickerWheel.color.set(c); document.getElementById('set-color-hex').value = c; }
+            document.getElementById('picker-title').innerText = activePicker.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ') + ' Color'; 
+        }
+
+        function renderCard(cfg, containerId, data = { stamps:0, points:0 }) {
+            const container = document.getElementById(containerId); if(!container) return;
+            const isFull = data.stamps >= cfg.maxStamps;
+            let grid = '';
+            for(let i=0; i<cfg.maxStamps; i++) {
+                let op = 0, filled = false;
+                if(cfg.mode==='visit') { filled = i < data.stamps; op = filled ? 1 : 0; }
+                else { const prog = Math.max(0, Math.min(100, data.points - (i * 100))); op = prog / 100; filled = op >= 1; }
+                const hasText = cfg.stampText && cfg.stampText.trim().length > 0;
+                const sCol = cfg.stampColor || '#6366f1';
+                const fillOverlay = (cfg.mode !== 'visit') ? `<div class="absolute inset-0 bg-white" style="opacity: ${op}"></div>` : '';
+                const slotStyle = filled ? `background: radial-gradient(circle at 0% -50%, #fff -60%, ${cfg.stampBgColor || '#ffffff'} 100%) !important;` : `background: rgba(255, 255, 255, 0.15);`;
+                grid += `<div class="stamp-slot ${filled?'filled':''}" style="${slotStyle}">${fillOverlay}<div class="relative z-10 flex flex-col items-center justify-center w-full h-full text-center"><i data-lucide="${cfg.stampIcon}" class="${hasText ? 'w-4 h-4' : 'w-7 h-7'}" style="color: ${filled?sCol:'rgba(255,255,255,0.2)'}"></i>${hasText ? `<span class="stamp-mark" style="font-family: ${cfg.stampFont}; font-size: 0.5rem; margin-top: 3px; color: ${filled?sCol:'rgba(255,255,255,0.2)'}">${cfg.stampText}</span>` : ''}</div></div>`;
+            }
+            let claimBtn = '';
+            if(isFull && containerId === 'customer-cards-container') {
+                claimBtn = `<button onclick="customer.claimReward()" class="w-full mt-6 bg-emerald-500 text-white py-6 rounded-[28px] font-black shadow-xl shadow-emerald-100 flex items-center justify-center gap-3 animate-bounce">CLAIM REWARD <i data-lucide="gift"></i></button>`;
+            }
+            const lastVisitText = data.lastStampAt ? getTimeAgo(data.lastStampAt) : 'Never';
+            const cardBg = `linear-gradient(135deg, ${cfg.color}, ${cfg.secondaryColor})`;
+            container.innerHTML = `
+                <div class="loyalty-card" id="card-${containerId}" style="background: ${cardBg}">
+                    <div class="card-front">
+                        <div class="flex justify-between items-start shrink-0">
+                            <div class="flex items-center gap-5">
+                                <div class="w-14 h-14 rounded-[22px] bg-white/20 flex items-center justify-center overflow-hidden border border-white/30 shadow-inner">
+                                    ${cfg.logoUrl ? `<img src="${cfg.logoUrl}" class="w-full h-full object-cover">` : `<i data-lucide="store" class="w-7 h-7"></i>`}
+                                </div>
+                                <div>
+                                    <h3 class="font-black text-sm leading-tight tracking-tight">${cfg.name}</h3>
+                                    <p class="text-[8px] opacity-70 uppercase font-black tracking-[0.2em] mt-1">${lastVisitText}</p>
+                                </div>
+                            </div>
+                            <button onclick="document.getElementById('card-${containerId}').classList.toggle('flipped')" class="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all">
+                                <i data-lucide="info" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <div class="stamp-grid grid-cols-5 gap-2">${grid}</div>
+                    </div>
+                    <div class="card-back">
+                        <div class="flex justify-between items-center shrink-0">
+                            <h3 class="font-black uppercase tracking-[0.2em] text-[10px]" style="color: ${cfg.color}">Merchant Info</h3>
+                            <div class="flex items-center gap-2">
+                                ${cfg.location ? `<a href="${cfg.location}" target="_blank" class="w-9 h-9 flex items-center justify-center bg-slate-100 text-slate-500 rounded-xl active:scale-90 transition-all"><i data-lucide="map-pin" class="w-4 h-4"></i></a>` : ''}
+                                <button onclick="document.getElementById('card-${containerId}').classList.toggle('flipped')" class="w-9 h-9 flex items-center justify-center text-slate-300 bg-slate-50 rounded-xl hover:text-slate-600 active:scale-90 transition-all"><i data-lucide="x" class="w-4 h-4"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex-1 overflow-y-auto no-scrollbar space-y-4 pb-10">
+                            <div>
+                                <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Reward</p>
+                                <div class="p-4 bg-slate-50 rounded-3xl border border-slate-100 shadow-inner text-sm font-bold text-slate-900 leading-relaxed">
+                                    ${cfg.reward || 'Collect all stamps to unlock your reward!'}
+                                </div>
+                            </div>
+                            <div class="p-5 rounded-[32px] border flex items-center justify-between" style="background: ${cfg.color}10; border-color: ${cfg.color}20">
+                                <div>
+                                    <p class="text-[8px] font-black uppercase tracking-widest mb-1" style="color: ${cfg.color}">Status</p>
+                                    <p class="text-xs font-black text-slate-900">${data.stamps} / ${cfg.maxStamps} Stamps</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-[8px] font-black uppercase tracking-widest mb-1" style="color: ${cfg.color}">Last Activity</p>
+                                    <p class="text-xs font-black text-slate-900">${lastVisitText}</p>
+                                </div>
+                            </div>
+                            <div class="pt-2 text-center">
+                                <p class="text-[9px] text-slate-300 font-bold uppercase tracking-[0.2em]">Digital Wallet ID</p>
+                                <p class="text-[7px] text-slate-200 font-mono mt-1">${currentUser.uid.substr(0,12)}...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>${claimBtn}`;
+            lucide.createIcons();
+        }
+
+        function loadHistory() {
+            onValue(ref(db, `cards/${currentStoreId}/${currentUser.uid}/history`), (snap) => {
+                const history = Object.values(snap.val() || {}).sort((a,b) => b.claimedAt - a.claimedAt);
+                const list = document.getElementById('full-history-list'), empty = document.getElementById('no-history');
+                if(history.length === 0) { list.innerHTML = ''; empty.classList.remove('hidden'); }
+                else { empty.classList.add('hidden'); list.innerHTML = history.map(h => {
+                    const isClaim = h.type === 'reward_claim';
+                    return `<div onclick="showHistoryDetail('${h.tokenId}', '${h.storeId}')" class="bg-white p-6 rounded-[36px] border border-slate-50 shadow-sm flex items-center justify-between active:scale-95 transition-all"><div class="flex items-center gap-5"><div class="w-12 h-12 ${isClaim?'bg-rose-50 text-rose-600':'bg-indigo-50 text-indigo-600'} rounded-2xl flex items-center justify-center shadow-inner"><i data-lucide="${isClaim?'gift':'award'}"></i></div><div><p class="font-black text-slate-900">${isClaim?'Reward Redeemed':'Earned Stamp'}</p><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">${new Date(h.claimedAt).toLocaleString()}</p></div></div><div class="${isClaim?'text-rose-600':'text-indigo-600'} font-black text-xl tracking-tight">${isClaim?'FULL':'+1'}</div></div>`;
+                }).join(''); lucide.createIcons(); }
+            });
+        }
+
+        let storeConfigs = new Map();
+        let cardDataMap = new Map();
+        let storeListeners = new Map();
+        let cardListeners = new Map();
+
+        async function loadMyCards() {
+            const userStoreRef = ref(db, `users/${currentUser.uid}/my_stores`);
+            const snap = await get(userStoreRef);
+            const storeIds = snap.exists() ? Object.keys(snap.val()) : [currentStoreId];
+            const container = document.getElementById('customer-cards-container'), noCards = document.getElementById('no-cards');
+            
+            storeListeners.forEach((unsub, sid) => { if(!storeIds.includes(sid)) { unsub(); storeListeners.delete(sid); } });
+            cardListeners.forEach((unsub, sid) => { if(!storeIds.includes(sid)) { unsub(); cardListeners.delete(sid); } });
+
+            const renderAll = () => {
+                const validCards = storeIds.map(sid => {
+                    const cfg = storeConfigs.get(sid) || STAMP_DEFAULTS;
+                    const data = cardDataMap.get(sid) || { stamps: 0, points: 0, lastStampAt: 0 };
+                    return { sid, cfg, data, progress: data.stamps / cfg.maxStamps };
+                }).filter(c => c.data.stamps > 0 || c.sid === currentStoreId);
+
+                if(validCards.length === 0) { noCards.classList.remove('hidden'); container.innerHTML = ''; }
+                else {
+                    noCards.classList.add('hidden');
+                    validCards.sort((a, b) => b.progress - a.progress);
+                    container.innerHTML = '';
+                    validCards.forEach(c => {
+                        const cardDiv = document.createElement('div');
+                        cardDiv.id = `card-wrapper-${c.sid}`;
+                        container.appendChild(cardDiv);
+                        renderCard(c.cfg, cardDiv.id, c.data);
+                    });
+                }
+            };
+
+            storeIds.forEach(sid => {
+                if(!storeListeners.has(sid)) {
+                    storeListeners.set(sid, onValue(ref(db, `stores/${sid}`), (s) => {
+                        storeConfigs.set(sid, { ...STAMP_DEFAULTS, ...(s.val() || {}) });
+                        renderAll();
+                    }));
+                }
+                if(!cardListeners.has(sid)) {
+                    cardListeners.set(sid, onValue(ref(db, `cards/${sid}/${currentUser.uid}`), (s) => {
+                        cardDataMap.set(sid, s.val() || { stamps: 0, points: 0, lastStampAt: 0 });
+                        renderAll();
+                    }));
+                }
+            });
+        }
+
+        async function handleUser(u) {
+            currentUser = u; if(!u) { router.navigate('auth'); return; }
+            const emailHash = btoa(u.email.toLowerCase().trim()).replace(/=/g, '');
+            document.getElementById('user-display-name').innerText = u.displayName.split(' ')[0];
+            document.querySelectorAll('.user-photo-class').forEach(i => { i.src = u.photoURL; i.classList.remove('hidden'); });
+            const p1 = document.getElementById('profile-photo'); if(p1) { p1.src = u.photoURL; p1.classList.remove('hidden'); }
+            document.getElementById('profile-name').innerText = u.displayName;
+            document.getElementById('profile-email').innerText = u.email;
+
+            if(window.roleListener) window.roleListener();
+            window.roleListener = onValue(ref(db, `users/${u.uid}`), async (snap) => {
+                let userData = snap.val();
+                if(!userData) {
+                    const inviteSnap = await get(ref(db, `staff_invites/${emailHash}`));
+                    const invite = inviteSnap.exists() ? inviteSnap.val() : null;
+                    userData = { uid:u.uid, displayName:u.displayName, email:u.email.toLowerCase(), photoURL:u.photoURL, role: invite ? 'staff' : 'customer' };
+                    if(invite) userData.merchantId = invite.storeId;
+                    await set(ref(db, `users/${u.uid}`), userData);
+                    return; 
+                }
+                if(window.inviteListener) window.inviteListener();
+                window.inviteListener = onValue(ref(db, `staff_invites/${emailHash}`), async (iSnap) => {
+                    const invite = iSnap.val();
+                    if(invite && userData.role === 'customer') await update(ref(db, `users/${u.uid}`), { role: 'staff', merchantId: invite.storeId });
+                    else if(!invite && userData.role === 'staff') await update(ref(db, `users/${u.uid}`), { role: 'customer', merchantId: null });
+                });
+                currentRole = userData.role;
+                if(currentRole === 'admin') currentStoreId = u.uid;
+                else if(currentRole === 'staff') currentStoreId = userData.merchantId || 'default-store';
+                document.getElementById('role-badge').innerText = (currentRole === 'admin' ? 'Merchant' : (currentRole === 'staff' ? 'Staff' : 'Member'));
+                document.getElementById('admin-actions').classList.toggle('hidden', currentRole!=='admin');
+                document.getElementById('staff-actions').classList.toggle('hidden', currentRole!=='staff'&&currentRole!=='admin');
+                document.getElementById('btn-admin-gear').classList.toggle('hidden', currentRole!=='admin');
+                document.getElementById('btn-master-hub').classList.toggle('hidden', u.email !== MASTER_ADMIN_EMAIL);
+                
+                // Reactive Onboarding Toggles
+                const reqSnap = await get(ref(db, `merchant_requests/${u.uid}`));
+                const request = reqSnap.exists() ? reqSnap.val() : null;
+                const onboardingDiv = document.getElementById('customer-onboarding');
+                onboardingDiv.classList.toggle('hidden', currentRole!=='customer' || u.email === MASTER_ADMIN_EMAIL);
+                
+                if(request && request.status === 'rejected') {
+                    document.getElementById('onboarding-cta-title').innerText = "Application Rejected";
+                    document.getElementById('onboarding-cta-sub').innerText = "Try Re-applying Now";
+                } else if(request && request.status === 'pending') {
+                    document.getElementById('onboarding-cta-title').innerText = "Application Pending";
+                    document.getElementById('onboarding-cta-sub').innerText = "Contact Support to Speed Up";
+                } else {
+                    document.getElementById('onboarding-cta-title').innerText = "Own a Business?";
+                    document.getElementById('onboarding-cta-sub').innerText = "Register Store";
+                }
+
+                await loadStoreConfig();
+            });
+
+            const params = new URLSearchParams(window.location.search);
+            if(params.has('store') && params.has('type')) { onScanSuccess(window.location.href); window.history.replaceState({}, document.title, window.location.pathname); }
+            else { await loadMyCards(); router.navigate('customer-home'); }
+        }
+
+        async function loadStoreConfig() {
+            if(window.mainStoreListener) window.mainStoreListener();
+            window.mainStoreListener = onValue(ref(db, `stores/${currentStoreId}`), (s) => {
+                storeConfig = { ...STAMP_DEFAULTS, ...(s.exists() ? s.val() : {}) };
+                settings.live();
+            });
+            if(cardListener) cardListener();
+            cardListener = onValue(ref(db, `cards/${currentStoreId}/${currentUser.uid}`), (sn) => loadMyCards());
+        }
+
+        document.getElementById('btn-save-settings').onclick = async () => {
+            buttonToggleLoading('btn-save-settings', true);
+            try { await set(ref(db, `stores/${currentStoreId}`), storeConfig); showToast("Updates Published!", "check"); setTimeout(() => location.reload(), 1000); }
+            catch (e) { showToast(e.message, "alert-circle"); buttonToggleLoading('btn-save-settings', false); }
+        };
+
+        document.getElementById('upload-logo').onchange = async (e) => {
+            const file = e.target.files[0]; if(!file) return;
+            const loader = document.getElementById('global-loader'), loaderText = document.getElementById('loader-text');
+            loaderText.innerText = "Uploading..."; loader.classList.remove('hidden');
+            
+            const cloudName = "drxubxvtr", uploadPreset = "stamp_merchant_logo_";
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('upload_preset', uploadPreset);
+            // formData.append('public_id', currentStoreId); // Removed to avoid 400 error if "Allow public_id" is off
+            
+            try {
+                const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, { method: 'POST', body: formData });
+                if(!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error?.message || "Upload Failed");
+                }
+                const data = await response.json();
+                
+                // Cache busting timestamp
+                const finalUrl = data.secure_url + `?v=${Date.now()}`;
+                storeConfig.logoUrl = finalUrl;
+                
+                const img = document.getElementById('logo-preview-img'); 
+                img.src = finalUrl; 
+                img.classList.remove('hidden');
+                document.getElementById('logo-placeholder').classList.add('hidden');
+                
+                settings.live();
+                loader.classList.add('hidden');
+                showToast("Logo Uploaded!", "check");
+            } catch (err) { 
+                console.error(err);
+                showToast("Upload Error: " + err.message, "x"); 
+                loader.classList.add('hidden'); 
+            }
+        };
+
+        document.getElementById('btn-login').onclick = async () => { document.getElementById('view-splash').classList.add('active'); try { await signInWithPopup(auth, provider); } catch (e) { showToast(e.message, "x"); document.getElementById('view-splash').classList.remove('active'); } };
+        
+        let pullStart = 0, isPulling = false;
+        const initPullToRefresh = () => {
+            const home = views['customer-home'], refreshDiv = document.getElementById('pull-to-refresh');
+            home.addEventListener('touchstart', (e) => { if (home.scrollTop === 0) { pullStart = e.touches[0].pageY; isPulling = true; home.classList.add('pulling'); } }, { passive: true });
+            home.addEventListener('touchmove', (e) => { if (!isPulling) return; const diff = e.touches[0].pageY - pullStart; if (diff > 0 && diff < 150) { refreshDiv.style.transform = `translateY(${diff}px)`; const rotate = (diff / 150) * 360; refreshDiv.querySelector('.refresh-indicator').style.transform = `rotate(${rotate}deg) scale(${Math.min(1, diff/80)})`; } }, { passive: true });
+            home.addEventListener('touchend', async () => { if (!isPulling) return; const diff = parseInt(refreshDiv.style.transform.replace('translateY(', '')) || 0; if (diff > 80) { home.classList.add('refreshing'); refreshDiv.style.transform = 'translateY(80px)'; await loadMyCards(); setTimeout(() => { home.classList.remove('refreshing', 'pulling'); refreshDiv.style.transform = ''; }, 500); } else { home.classList.remove('pulling'); refreshDiv.style.transform = ''; } isPulling = false; });
+        };
+
+        onAuthStateChanged(auth, async (u) => { if(u) { await handleUser(u); initPullToRefresh(); setTimeout(() => document.getElementById('view-splash').classList.remove('active'), 1000); } else { router.navigate('auth'); setTimeout(() => document.getElementById('view-splash').classList.remove('active'), 1000); } });
+
+        let isProcessingScan = false;
+        async function onScanSuccess(text) {
+            if(isProcessingScan) return; isProcessingScan = true;
+            try {
+                const url = new URL(text), store = url.searchParams.get('store'), type = url.searchParams.get('type'), token = url.searchParams.get('t');
+                if(!store) throw new Error("Unsupported QR");
+                if (currentRole === 'staff' && store === currentStoreId) throw new Error("Staff cannot stamp own store!");
+                
+                if (!navigator.onLine) throw new Error("Offline: Check Connection");
+
+                document.getElementById('global-loader').classList.remove('hidden');
+                await update(ref(db, `users/${currentUser.uid}/my_stores`), { [store]: true });
+                
+                const cardRef = ref(db, `cards/${store}/${currentUser.uid}`);
+                const storeSnap = await get(ref(db, `stores/${store}`));
+                const sc = storeSnap.exists() ? storeSnap.val() : STAMP_DEFAULTS;
+                const now = Date.now();
+                const isDynamic = (type === 'dynamic' || type === 'one-time' || type === 'quick');
+                const isStatic = (type === 'static');
+
+                if(isDynamic || isStatic) {
+                    const tokenKey = isStatic ? `static_claimed_${store}_${currentUser.uid}` : `last_token_${store}_${currentUser.uid}`;
+                    const lastT = localStorage.getItem(tokenKey);
+                    
+                    if(isStatic) {
+                        const cardSnap = await get(cardRef);
+                        const cardData = cardSnap.exists() ? cardSnap.val() : { stamps: 0, history: {} };
+                        const hasStatic = Object.values(cardData.history || {}).some(h => h.type === 'static');
+                        if(hasStatic || lastT) {
+                            showToast("You have claimed this welcome stamp!", "info");
+                            if(store !== currentStoreId) { currentStoreId = store; await loadStoreConfig(); }
+                            router.navigate('customer-home');
+                            return;
+                        }
+                    } else if(lastT === token) {
+                        router.navigate('customer-home');
+                        throw new Error("Already scanned!");
+                    }
+                    
+                    const tid = push(child(ref(db), 'pending_stamps')).key;
+                    const req = { tokenId: tid, storeId: store, claimerId: currentUser.uid, claimerName: currentUser.displayName, type: isStatic ? 'static' : 'visit', status: 'claimed', createdAt: now, claimedAt: now, approvedBy: 'system', approvedByName: isStatic ? 'Welcome QR' : 'Station QR' };
+
+                    const result = await runTransaction(cardRef, (currentData) => {
+                        if (!currentData) currentData = { stamps: 0, lastStampAt: 0, claimerName: currentUser.displayName };
+                        if ((currentData.stamps || 0) >= (sc.maxStamps || 9)) return; // Card full
+                        if (!isStatic && (now - (currentData.lastStampAt || 0) < 60000)) return; // Cooldown
+                        
+                        currentData.stamps = (currentData.stamps || 0) + 1;
+                        currentData.lastStampAt = now;
+                        currentData.claimerName = currentUser.displayName;
+                        return currentData;
+                    });
+
+                    if (!result.committed) throw new Error(isStatic ? "Card Full!" : "Card Full or Cooldown active");
+
+                    await set(ref(db, `pending_stamps/${tid}`), req); 
+                    await set(ref(db, `cards/${store}/${currentUser.uid}/history/${tid}`), req);
+                    localStorage.setItem(tokenKey, isStatic ? 'true' : token); 
+                    showToast(isStatic ? "Welcome +1 Stamp!" : "Received +1 stamp", "check"); 
+                    if(typeof confetti === 'function') confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+                    
+                    if(store !== currentStoreId) { currentStoreId = store; await loadStoreConfig(); }
+                    setTimeout(() => router.navigate('customer-home'), 500); 
+                    return;
+                }
+
+                // Regular "Request Approval" branch
+                const cardSnap = await get(cardRef);
+                const cardData = cardSnap.exists() ? cardSnap.val() : { stamps: 0, lastStampAt: 0 };
+                const pSnap = await get(query(ref(db, 'pending_stamps'), orderByChild('claimerId'), equalTo(currentUser.uid)));
+                const hasPending = Object.values(pSnap.val()||{}).some(s => s.storeId === store && s.status === 'pending_approval' && (now - (s.createdAt || 0) < 3600000));
+                
+                if(hasPending) throw new Error("Pending stamp exists!");
+                if (now - (cardData.lastStampAt || 0) < 3600000) throw new Error("Cooldown active");
+                if(cardData.stamps >= (sc.maxStamps || 9)) throw new Error("Card Full!");
+                
+                const tid = push(child(ref(db), 'pending_stamps')).key;
+                const req = { tokenId: tid, storeId: store, claimerId: currentUser.uid, claimerName: currentUser.displayName, type: 'visit', status: 'pending_approval', createdAt: now };
+                await set(ref(db, `pending_stamps/${tid}`), req); 
+                showToast("Claim Sent!", "check");
+                
+                if(store !== currentStoreId) { currentStoreId = store; await loadStoreConfig(); }
+                setTimeout(() => router.navigate('customer-home'), 500);
+            } catch (e) { 
+                showToast(e.message, "alert-circle"); 
+                document.getElementById('global-loader').classList.add('hidden'); 
+            } finally { 
+                document.getElementById('global-loader').classList.add('hidden'); 
+                setTimeout(() => isProcessingScan = false, 2000); 
+            }
+        }
+
+        let scanner = null;
+        async function initScanner(isManual = false) {
+            const placeholder = document.getElementById('scanner-placeholder');
+            const scannerUi = document.getElementById('scanner-ui');
+            
+            try {
+                if(!scanner) scanner = new Html5Qrcode("reader");
+                const config = { fps: 15, qrbox: 250, aspectRatio: 1.0 };
+                
+                if(scanner.isScanning) {
+                    await scanner.stop();
+                    scanner.isScanning = false;
+                }
+                
+                placeholder.classList.remove('hidden');
+                scannerUi.classList.add('hidden');
+                
+                // On iOS, sometimes the first start fails if not from direct click
+                // isManual helps identify if the user explicitly clicked "Start Camera"
+                await scanner.start({ facingMode: "environment" }, config, onScanSuccess);
+                
+                scanner.isScanning = true;
+                placeholder.classList.add('hidden');
+                scannerUi.classList.remove('hidden');
+                
+            } catch (e) {
+                console.error("Scanner Error:", e);
+                if(isManual) showToast("Camera Permission Denied", "x");
+                placeholder.classList.remove('hidden');
+                scannerUi.classList.add('hidden');
+            }
+        }
+/*
+
+  */
+    </script>
+</body>
+</html>
